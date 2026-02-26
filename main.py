@@ -5,7 +5,7 @@ from recorder import (
     blade_position_1_recorder,
     blade_velocity_5_recorder,
     wind_5_recorder,
-    aero_recorder        
+    aero5_recorder,            
 )
 from simulation import Simulation
 from structure import RigidStructure
@@ -18,6 +18,7 @@ do = {
 }
 
 if do["test"]:
+    #%% SET UP SIMULATION
     # structural parameters
     omega_init = 0.62  
     yaw = 0
@@ -36,7 +37,7 @@ if do["test"]:
     use_dyn_stall=True
 
     # Simulation parameters
-    N = 10
+    N = 5
     T = N * 2 * np.pi / omega_init
     dt = T / 200
 
@@ -65,8 +66,8 @@ if do["test"]:
     aero = Aero(V_hub, use_dyn_wake=use_dyn_wake, use_dyn_stall=use_dyn_stall)
 
     # Define recorders
-    aero_recorder = aero_recorder(name="aero", blade_idx=0, element_idx=10)
-    # debug_aero_recorder = debug_aero_recorder(name="debug_aero", blade_idx=0, element_idx=10)
+    # wind_recorder = wind_5_recorder("wind", blade_idx=0, element_idx=10)
+    aero_recorder = aero5_recorder(name="aero", blade_idx=0, element_idx=10)
     recorders = [aero_recorder] 
     
     # Set up simulation, run, and save wind recorder data
@@ -85,19 +86,23 @@ if do["test"]:
     print("\nSimulation complete. Saving data...\n")
     simulation.save_recorders("sim_data", overwrite=True)
 
+    #%% OUTPUT
     # Get data (saving above not needed for this) for plotting
     data = simulation.get_recorders()
-    azimuth = data["time"]["values"] * omega_init / (2 * np.pi) * 360
+    azimuth = data["time"] * omega_init / (2 * np.pi) * 360
      # Extract data from aero recorder
-    w_y = data["aero"]["values"][:, 0]
-    w_z = data["aero"]["values"][:, 1]
-    p_y = data["aero"]["values"][:, 2]
-    p_z = data["aero"]["values"][:, 3]
+    w_y = data["aero"]["w_y"]
+    w_z = data["aero"]["w_z"]
+    p_y = data["aero"]["p_y"]
+    p_z = data["aero"]["p_z"]
     
     
-    # Plot induced velocity
-    plot_2_values(azimuth, w_y, w_z, "w_y", "w_z", "m/s", "w_induced_velocity", shear_exp, use_dyn_wake, use_dyn_stall, tower_effects)
-    # Plot aerodynamic load
+   
+
+    plot_2_values(azimuth, w_y, w_z, "w_y", "w_z", "m/s",
+                  "w_induced_velocity", shear_exp, use_dyn_wake,
+                  use_dyn_stall, tower_effects)
+    # # Plot aerodynamic load
     # plot_2_values(azimuth, p_y, p_z, "p_y", "p_z", "Nm/m", "p_spanwise_loads", shear_exp, use_dyn_wake, use_dyn_stall, tower_effects)
     # Plot relative velocity
     # plot_2_values(azimuth, vrel_y, vrel_z, "vrel_y", "vrel_z", "m/s", "v_rel_relative_velocity", shear_exp, use_dyn_wake, use_dyn_stall, tower_effects)

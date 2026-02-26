@@ -45,7 +45,7 @@ class Recorder:
         self.func = func
         self.name = name
         self.func_returns = func_returns if isinstance(func_returns, tuple) else (func_returns,)
-        self._data = np.ndarray((0,))
+        self._data = np.empty(0)
         self._steps_udpated = False
 
     def update_n_steps(self, n_steps: int):
@@ -59,12 +59,12 @@ class Recorder:
 
     @property
     def data(self) -> np.ndarray:
-        return self._data.squeeze()
+        return self._data
 
 
 def time_recorder():
     def time(simulation):
-        return simulation.time
+        return round(simulation.time, 5)
 
     return Recorder(time, "time", ("time",))
 
@@ -96,8 +96,8 @@ def wind_5_recorder(name: str, blade_idx: int, element_idx: int):
 
     return Recorder(wind5, name, ("u", "v", "w"))
 
-def aero_recorder(name: str, blade_idx: int, element_idx: int):
-    def aero(simulation):
+def aero5_recorder(name: str, blade_idx: int, element_idx: int):
+    def aero5(simulation):
         """Record aerodynamic variables for a blade element.
         Parameters
         ----------
@@ -133,104 +133,15 @@ def aero_recorder(name: str, blade_idx: int, element_idx: int):
         w_z        = simulation.aero.rotor.blades[blade_idx].w[1, element_idx]
         p_y        = simulation.aero.rotor.blades[blade_idx].p[0, element_idx]
         p_z        = simulation.aero.rotor.blades[blade_idx].p[1, element_idx]
-        vrel_y     = simulation.aero.rotor.blades[blade_idx].vrel[0, element_idx]
-        vrel_z     = simulation.aero.rotor.blades[blade_idx].vrel[1, element_idx]
-        v0_y       = simulation.aero.rotor.blades[blade_idx].v0[0, element_idx]
-        v0_z       = simulation.aero.rotor.blades[blade_idx].v0[1, element_idx]
-        w_y_qs     = simulation.aero.rotor.blades[blade_idx].w_qs[0, element_idx]
-        w_z_qs     = simulation.aero.rotor.blades[blade_idx].w_qs[1, element_idx]
-        w_y_int    = simulation.aero.rotor.blades[blade_idx].w_int[0, element_idx]
-        w_z_int    = simulation.aero.rotor.blades[blade_idx].w_int[1, element_idx]
+        # vrel_y     = simulation.aero.rotor.blades[blade_idx].vrel[0, element_idx]
+        # vrel_z     = simulation.aero.rotor.blades[blade_idx].vrel[1, element_idx]
+        # v0_y       = simulation.aero.rotor.blades[blade_idx].v0[0, element_idx]
+        # v0_z       = simulation.aero.rotor.blades[blade_idx].v0[1, element_idx]
+        # w_y_qs     = simulation.aero.rotor.blades[blade_idx].w_qs[0, element_idx]
+        # w_z_qs     = simulation.aero.rotor.blades[blade_idx].w_qs[1, element_idx]
+        # w_y_int    = simulation.aero.rotor.blades[blade_idx].w_int[0, element_idx]
+        # w_z_int    = simulation.aero.rotor.blades[blade_idx].w_int[1, element_idx]
 
-        return w_y, w_z, p_y, p_z, vrel_y, vrel_z, v0_y, v0_z, w_y_qs, w_z_qs, w_y_int, w_z_int
+        return w_y, w_z, p_y, p_z #, vrel_y, vrel_z, v0_y, v0_z, w_y_qs, w_z_qs, w_y_int, w_z_int
 
-    return Recorder(aero, name, ("w_y", "w_z", "p_y", "p_z", "vrel_y", "vrel_z", "v0_y", "v0_z", "w_qs_y", "w_qs_z", "w_int_y", "w_int_z"))
-
-# def debug_aero_recorder(name: str, blade_idx: int, element_idx: int):
-#     def debug(simulation):
-#         """Record bem variables for a blade element.
-#         Parameters
-#         ----------
-#         simulation : Simulation
-#             The simulation object containing the current state of the simulation.
-#         blade_idx : int
-#             The index of the blade for which to record the data.
-#         element_idx : int
-#             The index of the blade element for which to record the data.
-#         Returns
-#         -------
-#         tuple  
-#             A tuple of the bem variables for the blade element.
-#             The tuple contains (omega, cone, x, norm_vrel, phi, aoa, cl, cd, lift, drag).
-
-
-
-#         """
-#         # Aero variables
-#         norm_vrel        = simulation.aero.rotor.blades[blade_idx].norm_vrel[element_idx]
-#         phi     = simulation.aero.rotor.blades[blade_idx].phi[element_idx]
-#         aoa     = simulation.aero.rotor.blades[blade_idx].aoa[element_idx]
-#         cl       = simulation.aero.rotor.blades[blade_idx].cl[element_idx]
-#         cd       = simulation.aero.rotor.blades[blade_idx].cd[element_idx]
-#         lift     = simulation.aero.rotor.blades[blade_idx].lift[element_idx]
-#         drag     = simulation.aero.rotor.blades[blade_idx].drag[element_idx]
-#         a    = simulation.aero.rotor.blades[blade_idx].a[element_idx]
-#         f_g    = simulation.aero.rotor.blades[blade_idx].f_g[element_idx]        
-#         r_nd = simulation.aero.rotor.blades[blade_idx].r_nd[element_idx]
-#         sin_phi   = simulation.aero.rotor.blades[blade_idx].sin_phi[element_idx]
-#         F  = simulation.aero.rotor.blades[blade_idx].F[element_idx]
-#         w_z_term   = simulation.aero.rotor.blades[blade_idx].w_z_term[element_idx]
-#         mag_v0_fW  = simulation.aero.rotor.blades[blade_idx].mag_v0_fW[element_idx]
-#         denominator  = simulation.aero.rotor.blades[blade_idx].denominator[element_idx]
-
-
-#         return norm_vrel, phi, aoa, cl, cd, lift, drag, a, f_g, r_nd, sin_phi, F, w_z_term, mag_v0_fW, denominator
-
-#     return Recorder(debug, name, ("norm_vrel", "phi", "aoa", "cl", "cd", "lift", "drag", "a", "f_g", "r_nd", "sin_phi", "F", "w_z_term", "mag_v0_fW", "denominator"))
-
-def load_dist_recorder(name: str, blade_idx: int, element_idx: int):
-    def load_dist(simulation):
-        p_y = simulation.aero.rotor.blades[blade_idx].p_y[element_idx]
-        p_z = simulation.aero.rotor.blades[blade_idx].p_z[element_idx]
-        
-        return p_y, p_z
-    
-    return Recorder(load_dist, name, ("p_y", "p_z"))
-
-def induced_vel_recorder(name: str, blade_idx: int, element_idx: int):
-    def induced_vel(simulation):
-        w_y = simulation.aero.rotor.blades[blade_idx].w_y_qs[element_idx]
-        w_z = simulation.aero.rotor.blades[blade_idx].w_z_qs[element_idx]
-        return w_y, w_z
-    
-    return Recorder(induced_vel, name, ("w_y_qs", "w_z_qs"))
-
-# def debug_structure_recorder(name: str, blade_idx: int, element_idx: int):
-#     def debug(simulation):
-#         """Record bem variables for a blade element.
-#         Parameters
-#         ----------
-#         simulation : Simulation
-#             The simulation object containing the current state of the simulation.
-#         blade_idx : int
-#             The index of the blade for which to record the data.
-#         element_idx : int
-#             The index of the blade element for which to record the data.
-#         Returns
-#         -------
-#         tuple  
-#             A tuple of the structure variables for the blade element.
-#             The tuple contains (r, c, twist, tc).
-
-
-
-#         """
-#         # Aero variables
-#         r = simulation.structure.r[element_idx]
-#         c = simulation.structure.c[element_idx]
-#         twist = simulation.structure.twist[element_idx]
-#         tc = simulation.structure.tc[element_idx]
-
-#         return r, c, twist, tc
-
-#     return Recorder(debug, name, ("r", "c", "twist", "tc"))
+    return Recorder(aero5, name, ("w_y", "w_z", "p_y", "p_z")) # "vrel_y", "vrel_z", "v0_y", "v0_z", "w_qs_y", "w_qs_z", "w_int_y", "w_int_z"))
