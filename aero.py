@@ -44,12 +44,12 @@ class Aero:
             for blade in self.rotor.blades:
                 blade.w_qs_prev[:] = blade.w_qs
                 # blade.w_qs_prev = blade.w_qs
-                xyz = simulation.structure.blade_x1(blade.blade_no)
+                xyz = simulation.structure.blade_x1(blade.blade_idx)
                 
                 blade_v0_1 = simulation.wind(xyz)
                 
                 # transform to coordinate system 5
-                blade.v0 = simulation.structure.x15(blade_v0_1, blade.blade_no)
+                blade.v0 = simulation.structure.x15(blade_v0_1, blade.blade_idx)
 
                 blade.v0 = blade.v0.T # make shape (n_sections, 2) for easier handling in calculations
 
@@ -57,7 +57,7 @@ class Aero:
                 
                 omega = simulation.structure.omega_shaft
                 cone = simulation.structure.cone
-                x = simulation.structure.r
+                x = blade.r
 
                 # calculate relative velocity components with previous induced velocities
                 if self.use_dyn_wake:
@@ -78,19 +78,19 @@ class Aero:
                 phi = arctan2(blade.vrel[1], -blade.vrel[0]) # in radians
 
                 # calculate angle of attack
-                aoa = np.degrees(phi)-(simulation.structure.twist+simulation.structure.pitch[blade.blade_no])
+                aoa = np.degrees(phi)-(blade.twist+blade.pitch)
                 
 
-                cl = airfoils.cl_stat_interp((aoa, simulation.structure.tc))
-                cd = airfoils.cd_stat_interp((aoa, simulation.structure.tc))
+                cl = airfoils.cl_stat_interp((aoa, blade.tc))
+                cd = airfoils.cd_stat_interp((aoa, blade.tc))
 
                 # interpolate cl and cd from airfoil data
                 if self.use_dyn_stall:
-                    cl, blade.fs = self.dyn_stall(simulation, aoa, norm_vrel, blade.fs)                
+                    cl, blade.fs = self.dyn_stall(simulation, aoa, norm_vrel, blade)                
                             
                 # calculate lift and drag per unit length
-                lift = 0.5*self.RHO*norm_vrel**2*simulation.structure.c*cl       
-                drag = 0.5*self.RHO*norm_vrel**2*simulation.structure.c*cd
+                lift = 0.5*self.RHO*norm_vrel**2*blade.chord*cl       
+                drag = 0.5*self.RHO*norm_vrel**2*blade.chord*cd
 
                 # calculate spanwise loads
                 blade.p[0] = lift*sin(phi)-drag*cos(phi)
@@ -106,7 +106,7 @@ class Aero:
                 
                 # calculate Prandtl tip loss F
                 R = simulation.structure.R
-                r = simulation.structure.r
+                r = blade.r
                 r_nd = r/R # mitigatio when r=0
                 
                 sin_phi = np.maximum(np.sin(np.abs(phi)), 1e-6)
@@ -132,13 +132,18 @@ class Aero:
                                                         R,
                                                         self.V_hub, 
                                                         r)
-            
+
+                # compute thrust
+                blade.thrust = np.trapezoid(blade.p[1], blade.r)
+                blade.torque = np.trapezoid(blade.p[0]*blade.r, blade.r)
+                blade.power = blade.torque * omega
+
     def simulation_init(self, simulation):
         self.no_blades = simulation.structure.n_blades
         self.no_blade_sections = len(simulation.structure.r)
-        self.rotor = Rotor(self.no_blades, self.no_blade_sections)
+        self.rotor = Rotor(simulation, self.no_blades, self.no_blade_sections)
 
-    def dyn_wake_theo(self, simulation, w_qs, w_qs_prev, w_int, w, a, R, V_hub, r):
+    def dyn_wake(self, simulation, w_qs, w_qs_prev, w_int, w, a, R, V_hub, r):
         """
         Calculate the dynamic wake effect on the induced velocity using a simple first-order model.
 
@@ -163,6 +168,7 @@ class Aero:
         w : np.ndarray
             The updated induced velocities accounting for dynamic wake effects.
         """
+        dt = simulation.dt
         k = 0.6
         a = np.clip(a, 0, 0.5)  # Element-wise minimum
          # Protect against division by zero in tau_1 and V0
@@ -172,17 +178,17 @@ class Aero:
         # print("tau_2", tau_2[10])
 
         # Estimate rhs of eq3
-        d_w_qs = (w_qs-w_qs_prev)/simulation.dt
+        d_w_qs = (w_qs-w_qs_prev)/dt
         H = w_qs + k*tau_1*d_w_qs
 
         # solve eq3 analytically
-        w_int = H + (w_int-H)*np.exp(-simulation.dt/tau_1)
+        w_int = H + (w_int-H)*np.exp(-dt/tau_1)
         # solve eq4 analytically
-        w = w_int + (w-w_int)*np.exp(-simulation.dt/tau_2)
+        w = w_int + (w-w_int)*np.exp(-dt/tau_2)
 
         return w, w_int
 
-    def dyn_wake(self, simulation, w_qs, w_qs_prev, w_int, w, a, R, V_hub, r):
+    def dyn_wake_emil(self, simulation, w_qs, w_qs_prev, w_int, w, a, R, V_hub, r):
         dt = simulation.dt
         k = 0.6    # empirical constant
 
@@ -229,33 +235,47 @@ class Aero:
 
         return w, w_int
 
-    def dyn_stall(self, simulation, aoa, vrel, fs):
+    def dyn_stall(self, simulation, aoa, vrel, blade):
         
-        cl_inv = airfoils.cl_inv_interp((aoa, simulation.structure.tc))
-        cl_fs = airfoils.cl_fs_interp((aoa, simulation.structure.tc))
-        fs_stat = airfoils.f_stat_interp((aoa, simulation.structure.tc))
-        tau = 4*simulation.structure.c/vrel 
-        fs = fs_stat + (fs-fs_stat)*np.exp(-simulation.dt/tau)
-        cl = fs*cl_inv + (1-fs)*cl_fs
-        return cl, fs
+        cl_inv = airfoils.cl_inv_interp((aoa, blade.tc))
+        cl_fs = airfoils.cl_fs_interp((aoa, blade.tc))
+        fs_stat = airfoils.f_stat_interp((aoa, blade.tc))
+        tau = 4*blade.chord/vrel 
+        blade.fs = fs_stat + (blade.fs-fs_stat)*np.exp(-simulation.dt/tau)
+        cl = blade.fs*cl_inv + (1-blade.fs)*cl_fs
+        return cl, blade.fs
 
 class Rotor:    
 
-    def __init__(self, no_blades, no_blade_sections) -> None:
+    def __init__(self, simulation, no_blades, no_blade_sections) -> None:
         self.blades = []
         for i in range(no_blades):
-             self.blades.append(Blade(i, no_blade_sections))
+             self.blades.append(Blade(simulation, i, no_blade_sections))
 
 class Blade:
 
-    def __init__(self, blade_no, blade_sections) -> None:
+    def __init__(self, simulation, blade_idx, blade_sections) -> None:
         
-        self.blade_no = blade_no
+        self.blade_idx = blade_idx
         self.w_qs       = np.zeros((2, blade_sections))
         self.w_qs_prev  = np.zeros((2, blade_sections))
         self.w_int      = np.zeros((2, blade_sections))
         self.w          = np.zeros((2, blade_sections))
         self.vrel       = np.zeros((2,blade_sections))
         self.v0         = np.zeros((2,blade_sections))
+        
         self.p          = np.zeros((2,blade_sections))
+
         self.fs         = np.zeros(blade_sections)
+
+        # blade data from structure for easy access in the step function
+        self.chord = simulation.structure.c
+        self.r = simulation.structure.r
+        self.twist = simulation.structure.twist
+        self.tc = simulation.structure.tc
+        self.pitch = simulation.structure.pitch[self.blade_idx]
+
+
+        self.thrust = 0.0
+        self.torque = 0.0
+        self.power = 0.0
