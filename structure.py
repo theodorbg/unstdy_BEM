@@ -56,6 +56,7 @@ class Structure(ABC):
             The initial pitch angles for each blade. From this, the number of blades are defined, by default [0, 0, 0]
         """
         self.r  = pd.read_csv(file_blade)["r"].to_numpy()
+        print("self.r.shape", self.r.shape)
         self.c = pd.read_csv(file_blade)["c"].to_numpy()
         self.twist = pd.read_csv(file_blade)["twist"].to_numpy()
         self.tc = pd.read_csv(file_blade)["rel_thickness"].to_numpy()
