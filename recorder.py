@@ -96,7 +96,25 @@ def wind_5_recorder(name: str, blade_idx: int, element_idx: int):
 
     return Recorder(wind5, name, ("u", "v", "w"))
 
-def aero5_recorder(name: str, blade_idx: int, element_idx: int):
+
+def w_5_recorder(name: str, blade_idx: int, element_idx: int):
+    def w5(simulation):
+        w_y        = simulation.aero.rotor.blades[blade_idx].w[0, element_idx]
+        w_z        = simulation.aero.rotor.blades[blade_idx].w[1, element_idx]
+        # vrel_y     = simulation.aero.rotor.blades[blade_idx].vrel[0, element_idx]
+        # vrel_z     = simulation.aero.rotor.blades[blade_idx].vrel[1, element_idx]
+        # v0_y       = simulation.aero.rotor.blades[blade_idx].v0[0, element_idx]
+        # v0_z       = simulation.aero.rotor.blades[blade_idx].v0[1, element_idx]
+        # w_y_qs     = simulation.aero.rotor.blades[blade_idx].w_qs[0, element_idx]
+        # w_z_qs     = simulation.aero.rotor.blades[blade_idx].w_qs[1, element_idx]
+        # w_y_int    = simulation.aero.rotor.blades[blade_idx].w_int[0, element_idx]
+        # w_z_int    = simulation.aero.rotor.blades[blade_idx].w_int[1, element_idx]
+        return w_y, w_z #, vrel_y, vrel_z, v0_y, v0_z, w_y_qs, w_z_qs, w_y_int, w_z_int
+
+    return Recorder(w5, name, ("w_y", "w_z")) # "vrel_y", "vrel_z", "v0_y", "v0_z", "w_qs_y", "w_qs_z", "w_int_y", "w_int_z"))
+
+
+def p_5_recorder(name: str, blade_idx: int, element_idx: int):
     def aero5(simulation):
         """Record aerodynamic variables for a blade element.
         Parameters
@@ -129,19 +147,53 @@ def aero5_recorder(name: str, blade_idx: int, element_idx: int):
 
 
         """
-        w_y        = simulation.aero.rotor.blades[blade_idx].w[0, element_idx]
-        w_z        = simulation.aero.rotor.blades[blade_idx].w[1, element_idx]
-        p_y        = simulation.aero.rotor.blades[blade_idx].p[0, element_idx]
-        p_z        = simulation.aero.rotor.blades[blade_idx].p[1, element_idx]
-        # vrel_y     = simulation.aero.rotor.blades[blade_idx].vrel[0, element_idx]
-        # vrel_z     = simulation.aero.rotor.blades[blade_idx].vrel[1, element_idx]
-        # v0_y       = simulation.aero.rotor.blades[blade_idx].v0[0, element_idx]
-        # v0_z       = simulation.aero.rotor.blades[blade_idx].v0[1, element_idx]
-        # w_y_qs     = simulation.aero.rotor.blades[blade_idx].w_qs[0, element_idx]
-        # w_z_qs     = simulation.aero.rotor.blades[blade_idx].w_qs[1, element_idx]
-        # w_y_int    = simulation.aero.rotor.blades[blade_idx].w_int[0, element_idx]
-        # w_z_int    = simulation.aero.rotor.blades[blade_idx].w_int[1, element_idx]
+        
+        p_y = simulation.aero.rotor.blades[blade_idx].p[0, element_idx]
+        p_z = simulation.aero.rotor.blades[blade_idx].p[1, element_idx]        
 
-        return w_y, w_z, p_y, p_z #, vrel_y, vrel_z, v0_y, v0_z, w_y_qs, w_z_qs, w_y_int, w_z_int
+        return p_y, p_z
 
-    return Recorder(aero5, name, ("w_y", "w_z", "p_y", "p_z")) # "vrel_y", "vrel_z", "v0_y", "v0_z", "w_qs_y", "w_qs_z", "w_int_y", "w_int_z"))
+    return Recorder(aero5, name, ("p_y", "p_z"))
+
+
+def mech_out_recorder(name: str, blade_idx: int):
+    def mech_out(simulation):
+        """Record aerodynamic variables for a blade element.
+        Parameters
+        ----------
+        simulation : Simulation
+            The simulation object containing the current state of the simulation.
+        blade_idx : int
+            The index of the blade for which to record the data.
+        element_idx : int
+            The index of the blade element for which to record the data.
+        Returns
+        -------
+        tuple  
+            A tuple of the aerodynamic variables for the blade element.
+            The tuple contains (w, p, vrel, v0, w_qs, w_int).
+
+        w : np.ndarray
+            The induced velocity at the blade element.
+        p : np.ndarray
+            The aerodynamic load at the blade element.
+        vrel : np.ndarray
+            The relative velocity at the blade element.
+        v0 : np.ndarray
+            The free-stream velocity at the blade element.
+        w_qs : np.ndarray
+            The quasi-steady induced velocity at the blade element.
+        w_int : np.ndarray
+            The intermediate induced velocity used in the dynamic wake model at the blade element.
+
+
+
+        """
+
+        thrust = simulation.aero.rotor.blades[blade_idx].thrust
+        torque = simulation.aero.rotor.blades[blade_idx].torque
+        power = simulation.aero.rotor.blades[blade_idx].power
+
+        return thrust, torque, power
+
+    return Recorder(mech_out, name, ("thrust", "torque", "power"))
