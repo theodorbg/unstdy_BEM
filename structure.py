@@ -56,7 +56,6 @@ class Structure(ABC):
             The initial pitch angles for each blade. From this, the number of blades are defined, by default [0, 0, 0]
         """
         self.r  = pd.read_csv(file_blade)["r"].to_numpy()
-        print("self.r.shape", self.r.shape)
         self.c = pd.read_csv(file_blade)["c"].to_numpy()
         self.twist = pd.read_csv(file_blade)["twist"].to_numpy()
         self.tc = pd.read_csv(file_blade)["rel_thickness"].to_numpy()
@@ -153,6 +152,10 @@ class RigidStructure(Structure):
             self.phi_shaft += self.omega_shaft * simulation.dt
         else:
             raise NotImplementedError("You'll have to implement the drive train dynamcis at some point :)")
+        
+        # Update time-varying pitch if a pitch schedule is defined
+        if hasattr(self, 'pitch_schedule') and self.pitch_schedule is not None:
+            self.pitch = self.pitch_schedule(simulation.time)
 
     def blade_x1(self, blade_idx: int) -> np.ndarray:
         """
