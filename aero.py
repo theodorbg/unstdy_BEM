@@ -43,7 +43,10 @@ class Aero:
             
             for blade in self.rotor.blades:
                 blade.w_qs_prev[:] = blade.w_qs
-                # blade.w_qs_prev = blade.w_qs
+
+                # Read pitch dynamically for time-varying pitch
+                blade.pitch = simulation.structure.pitch[blade.blade_idx]
+                
                 xyz = simulation.structure.blade_x1(blade.blade_idx)
                 
                 blade_v0_1 = simulation.wind(xyz)
@@ -78,6 +81,7 @@ class Aero:
                 phi = arctan2(blade.vrel[1], -blade.vrel[0]) # in radians
 
                 # calculate angle of attack
+                # print("blade pitch = ", blade.pitch)
                 aoa = np.degrees(phi)-(blade.twist+blade.pitch)
                 
 
@@ -273,7 +277,8 @@ class Blade:
         self.r = simulation.structure.r
         self.twist = simulation.structure.twist
         self.tc = simulation.structure.tc
-        self.pitch = simulation.structure.pitch[self.blade_idx]
+        # outcommented for dynamic pitch
+        # self.pitch = simulation.structure.pitch[self.blade_idx]
 
 
         self.thrust = 0.0
