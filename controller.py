@@ -1,7 +1,12 @@
 """controller"""
 
 import numpy as np
-
+class NoController:
+    def simulation_init(self, simulation):
+        pass
+    def step(self, simulation):
+        pass
+    
 class Controller:
     """Controller"""
 

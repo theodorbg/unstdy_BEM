@@ -7,8 +7,8 @@ from pathlib import Path
 # Global text size control
 FONT_SIZE = 40
 # Default line styles and widths to cycle through
-# LINE_STYLES = ['-', '--', '-.', ':']
-LINE_STYLES = [':']
+LINE_STYLES = ['-', '--', '-.', ':']
+# LINE_STYLES = [':']
 LINE_WIDTH  = 8
 plt.rcParams.update({
     "font.size": FONT_SIZE,

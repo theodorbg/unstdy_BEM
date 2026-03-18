@@ -7,7 +7,7 @@ from recorder import Recorder, time_recorder
 from structure import Structure
 from wind import NoWind, Wind
 from aero import Aero
-from controller import Controller
+from controller import Controller, NoController
 
 
 class Simulation:
@@ -16,7 +16,7 @@ class Simulation:
         self,
         structure: Structure,
         aero: Aero,
-        controller: Controller,
+        controller: Controller = NoController(),
         wind: Wind = NoWind(),
         recorders: Recorder | list[Recorder] | None = None,
     ) -> None:
