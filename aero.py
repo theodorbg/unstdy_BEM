@@ -43,7 +43,10 @@ class Aero:
             
             for blade in self.rotor.blades:
                 blade.w_qs_prev[:] = blade.w_qs
-                # blade.w_qs_prev = blade.w_qs
+
+                # Read pitch dynamically for time-varying pitch
+                blade.pitch = simulation.structure.pitch[blade.blade_idx]
+                
                 xyz = simulation.structure.blade_x1(blade.blade_idx)
                 
                 blade_v0_1 = simulation.wind(xyz)
@@ -78,6 +81,7 @@ class Aero:
                 phi = arctan2(blade.vrel[1], -blade.vrel[0]) # in radians
 
                 # calculate angle of attack
+                # print("blade pitch = ", blade.pitch)
                 aoa = np.degrees(phi)-(blade.twist+blade.pitch)
                 
 
@@ -99,7 +103,10 @@ class Aero:
                 blade.p[:,-1] = float(0.0) # set loads to 0 at tip
 
                 # estimate local induction factor
-                a = -blade.w[1] / self.V_hub
+                if self.use_dyn_wake:
+                    a = -blade.w[1] / self.V_hub
+                else:
+                    a = -blade.w_qs[1] / self.V_hub
                 
                 # calculate glauert correction factor ( if statement on array)
                 f_g = np.where(a <= 1/3, 1, 1/4 * (5 - 3*a))
@@ -113,7 +120,11 @@ class Aero:
                 F = 2/pi * arccos(np.exp(-B/2*(1-r_nd)/(r_nd * sin_phi)))
 
                 # calculate v0+fg*Wn to insert easily into formula for Wz_qs
-                w_z_term = f_g * blade.w[1]
+                
+                if self.use_dyn_wake:
+                    w_z_term = f_g * blade.w[1]
+                else:
+                    w_z_term = f_g * blade.w_qs[1]
                 mag_v0_fW = sqrt(blade.v0[0]**2 + (blade.v0[1] + w_z_term)**2)
                 
                 # Add small epsilon to prevent division by zero 
@@ -137,6 +148,11 @@ class Aero:
                 blade.thrust = np.trapezoid(blade.p[1], blade.r)
                 blade.torque = np.trapezoid(blade.p[0]*blade.r, blade.r)
                 blade.power = blade.torque * omega
+
+            # sum thrust, torque and power over blades
+            self.rotor.torque = sum(blade.torque for blade in self.rotor.blades)
+            self.rotor.thrust = sum(blade.thrust for blade in self.rotor.blades)
+            self.rotor.power = sum(blade.power for blade in self.rotor.blades)
 
     def simulation_init(self, simulation):
         self.no_blades = simulation.structure.n_blades
@@ -248,6 +264,9 @@ class Aero:
 class Rotor:    
 
     def __init__(self, simulation, no_blades, no_blade_sections) -> None:
+        self.torque = 0.0
+        self.thrust = 0.0
+        self.power = 0.0
         self.blades = []
         for i in range(no_blades):
              self.blades.append(Blade(simulation, i, no_blade_sections))
@@ -273,7 +292,8 @@ class Blade:
         self.r = simulation.structure.r
         self.twist = simulation.structure.twist
         self.tc = simulation.structure.tc
-        self.pitch = simulation.structure.pitch[self.blade_idx]
+        # outcommented for dynamic pitch
+        # self.pitch = simulation.structure.pitch[self.blade_idx]
 
 
         self.thrust = 0.0
