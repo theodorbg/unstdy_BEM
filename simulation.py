@@ -7,6 +7,7 @@ from recorder import Recorder, time_recorder
 from structure import Structure
 from wind import NoWind, Wind
 from aero import Aero
+from controller import Controller
 
 
 class Simulation:
@@ -15,6 +16,7 @@ class Simulation:
         self,
         structure: Structure,
         aero: Aero,
+        controller: Controller,
         wind: Wind = NoWind(),
         recorders: Recorder | list[Recorder] | None = None,
     ) -> None:
@@ -32,8 +34,12 @@ class Simulation:
         """
         self.structure = structure
         self.aero = aero
+        self.controller = controller
         self.wind = wind
-        self.model_parts = [self.wind, self.structure, self.aero]
+        self.model_parts = [self.wind,
+                            self.structure,
+                            self.aero,
+                            self.controller]
         self.time = 0
         self.dt = 0
         self.step_idx = 0
@@ -73,6 +79,7 @@ class Simulation:
                 part.step(self)
 
             self.time += dt
+            print(f"Time: {self.time:.2f}, Progress: {self.time/T*100:.2f}%", end="\r")
 
     def get_recorders(self) -> dict[str, np.ndarray | dict[str, np.ndarray]]:
         """

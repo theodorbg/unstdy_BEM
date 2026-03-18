@@ -16,7 +16,7 @@ class Structure(ABC):
 
     def __init__(
         self,
-        omega_init=0.0,
+        omega_init=0.0,        
         file_blade="data/blade_data.csv",
         hub_height=119.0,
         bot_thickness = 3.32,
@@ -25,7 +25,7 @@ class Structure(ABC):
         cone=0.0,
         yaw=0.0,
         tilt=0.0,
-        pitch_init=[0, 0, 0],
+        pitch_init=[0.0, 0.0, 0.0],
     ) -> None:
         """
         Sets up some instance variables for the child classes.
@@ -55,12 +55,32 @@ class Structure(ABC):
         pitch_init : list, optional
             The initial pitch angles for each blade. From this, the number of blades are defined, by default [0, 0, 0]
         """
-        self.r  = pd.read_csv(file_blade)["r"].to_numpy()
-        self.c = pd.read_csv(file_blade)["c"].to_numpy()
-        self.twist = pd.read_csv(file_blade)["twist"].to_numpy()
-        self.tc = pd.read_csv(file_blade)["rel_thickness"].to_numpy()
+        # self.r  = pd.read_csv(file_blade)["r"].to_numpy()
+        # self.c = pd.read_csv(file_blade)["c"].to_numpy()
+        # self.twist = pd.read_csv(file_blade)["twist"].to_numpy()
+        # self.tc = pd.read_csv(file_blade)["rel_thickness"].to_numpy()
+
+        blade_data = pd.read_csv(file_blade)
+
+        r_old = blade_data["r"].to_numpy()
+        c_old = blade_data["c"].to_numpy()
+        twist_old = blade_data["twist"].to_numpy()
+        tc_old = blade_data["rel_thickness"].to_numpy()
+
+        # Number of blade span stations (increase this)
+        n_span = 100
+
+        # New finer radial grid
+        r_new = np.linspace(r_old[0], r_old[-1], n_span)
+
+        # Interpolate blade properties onto the new grid
+        self.r = r_new
+        self.c = np.interp(r_new, r_old, c_old)
+        self.twist = np.interp(r_new, r_old, twist_old)
+        self.tc = np.interp(r_new, r_old, tc_old)
 
         self.R = self.r[-1]
+        self.A = np.pi * self.R**2
         self.r_hub = self.r[0]
 
         self.hub_height = hub_height
@@ -71,11 +91,11 @@ class Structure(ABC):
         self.yaw = np.deg2rad(yaw)
         self.tilt = np.deg2rad(tilt)
         self.n_blades = len(pitch_init)
-        self.pitch = np.deg2rad(pitch_init)
+        self.pitch = pitch_init
 
         self.phi_shaft = 0
         self.omega_shaft = omega_init
-
+        self.inertia_rotor = 1.6e8
         self._x5_blade = np.c_[self.r, np.zeros_like(self.r), np.zeros_like(self.r)]
 
     @abstractmethod
@@ -153,9 +173,9 @@ class RigidStructure(Structure):
         else:
             raise NotImplementedError("You'll have to implement the drive train dynamcis at some point :)")
         
-        # Update time-varying pitch if a pitch schedule is defined
-        if hasattr(self, 'pitch_schedule') and self.pitch_schedule is not None:
-            self.pitch = self.pitch_schedule(simulation.time)
+        # # Update time-varying pitch if a pitch schedule is defined
+        # if hasattr(self, 'pitch_schedule') and self.pitch_schedule is not None:
+        #     self.pitch = self.pitch_schedule(simulation.time)
 
     def blade_x1(self, blade_idx: int) -> np.ndarray:
         """
@@ -191,8 +211,9 @@ class RigidStructure(Structure):
             Velocities as numpy array as [u, v, w] in coordinate system 5.
         """
         wr = self.omega_shaft * self.r
-        v = np.cos(self.pitch[blade_idx]) * wr
-        w = np.sin(self.pitch[blade_idx]) * wr
+        pitch_rad = np.deg2rad(self.pitch[blade_idx])  # convert degrees to radians
+        v = np.cos(pitch_rad) * wr
+        w = np.sin(pitch_rad) * wr
         return np.c_[np.zeros_like(self.r), v, w]
 
     def x15(self, array: np.ndarray, blade_idx: int) -> np.ndarray:
@@ -227,4 +248,4 @@ if __name__ == "__main__":
     # print(wt_structure.blade_x1(2))
 
     wind = np.asarray([0, 0, 10])
-    print(wt_structure.x15(wind, 0))
+    # print(wt_structure.x15(wind, 0))
