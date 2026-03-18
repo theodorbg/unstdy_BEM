@@ -36,7 +36,8 @@ do = {
     "ass_1_4_no_turb_w_tower": False,
     "ass_1_4_plot_comparison": False,
     "ass_1_4_plot": False,
-    "controller_test": True
+    "controller_test": False,
+    "test_turbulence": True
 }
 
 if do["test"]:
@@ -2558,3 +2559,231 @@ if do["controller_test"]:
     #         save_name="pitch_test",
     #         shear_exp=shear_exp)
    
+if do["test_turbulence"]:
+    #%% SET UP SIMULATION
+    # To run or not to run
+    run = True
+    # structural parameters
+    omega_init = 0.72  
+    yaw = 0
+    tilt = 0 
+
+    # STRUCTURE INITIALISATION
+    structure = RigidStructure(omega_init, yaw=yaw, tilt=tilt)
+
+    # Wind parameters
+    shear_exp = 0
+    V_hub = 12
+    # turbulence_box = MannTurbulenceBox(umean=V_hub, hub_height=structure.hub_height)
+    TI = 0.1
+
+    # Tower parameters
+    tower_effects = False
+
+    # Aero parameters
+    use_dyn_wake=False
+    use_dyn_stall=False
+
+    # Simulation parameters
+    N = 8
+    # T = N * 2 * np.pi / omega_init
+    T = 200
+    print(f"\nTotal simulation time: {T:.2f} seconds")
+    dt = 0.1
+    print(f"Time step: {dt:.4f} seconds, Number of steps: {int(T/dt)}")
+
+    hub_height = structure.hub_height
+    # Define wind with tower effect
+    tower_radius = np.asarray(  # columns are [x, tower radius]
+        [
+            [0, structure.bot_thickness],
+            [structure.hub_height, structure.top_thickness],
+        ]
+    )
+
+    # WIND INITIALISATION
+    if shear_exp != 0:
+        print(f"Using shear wind with exponent {shear_exp}")
+        wind_profile = ShearWind(hub_height, V_hub, shear_exp)
+    else:
+        print(f"Using constant wind with V_hub={V_hub} m/s")
+        wind_profile = ConstantWind(V_hub)
+    if tower_effects:
+        print(f"Including tower effects")
+        wind_profile = WindWithTower(y_tower=0, z_tower=0, xa=tower_radius, surrounding_wind=wind_profile)
+    else:
+        print(f"Not including tower effects")
+        # wind_profile = surrounding_wind
+    if TI > 0:
+        print(f"Including turbulence box")
+        wind_profile = TurbWind(wind_profile, TI)
+    else:
+        print(f"Not including turbulence box")
+        
+    # AERO INITIALISATION
+    aero = Aero(V_hub, use_dyn_wake=use_dyn_wake, use_dyn_stall=use_dyn_stall)
+
+    
+    #%% RECORDERS
+    
+    r_65 = structure.r[8]
+    print("index 9 corresponds to radius ", r_65)
+    recorders = []
+    # # record spanwise loads for each blade element on blade 0
+    # for span_pos in range(len(structure.r)):
+    #     p5_recorder = p_5_recorder(name=f"aero_{span_pos}", blade_idx=0, element_idx=span_pos)
+    #     # wind5_recorder = wind_5_recorder(name=f"wind_5_{span_pos}", blade_idx=0, element_idx=span_pos)
+    #     recorders.append(p5_recorder)
+    #     # recorders.append(wind5_recorder)
+    
+    # # record thrust, torque, and power for each blade
+    # for blade_idx in range(structure.n_blades):
+    #     recorders.append(mech_out_recorder(name=f"mech_out_blade_{blade_idx}", blade_idx=blade_idx))
+    #     recorders.append(w_5_recorder(name=f"w_5_blade_{blade_idx}", blade_idx=blade_idx, element_idx=8)) # induced wind 
+    
+    recorders.append(wind_5_recorder(name=f"wind_5", blade_idx=0, element_idx=8)) # wind velocity
+    # recorders.append(w_5_recorder(name=f"w_5", blade_idx=0, element_idx=8)) # induced wind
+    
+    #%% Set up simulation, run, and save wind recorder data
+    print(f"\nRunning simulation with parameters:\n")
+    print(f"omega = {omega_init:.2f} rad/s ")
+    print(f"yaw = {yaw} degrees,")
+    print(f"tilt = {tilt} degrees")
+    print(f"shear_exp = {shear_exp}")
+    print(f"V_hub={V_hub} m/s")
+    print(f"use_dyn_wake = {use_dyn_wake}")
+    print(f"use_dyn_stall = {use_dyn_stall}")
+    print(f"tower_effects = {tower_effects}")
+
+    if run == True:
+        simulation = Simulation(structure, aero, wind=wind_profile, recorders=recorders)
+        simulation.run(dt, T)
+        print("\nSimulation complete. Saving data...\n")
+        simulation.save_recorders("sim_data", overwrite=True)
+
+        #%% EXTRACT DATA FROM RECORDERS
+        # Get data (saving above not needed for this) for plotting
+        data = simulation.get_recorders()
+        azimuth = data["time"] * omega_init / (2 * np.pi) * 360
+        t = data["time"]
+        
+        # FREE WIND
+        u = data["wind_5"]["u"]
+        v = data["wind_5"]["v"]
+        w = data["wind_5"]["w"]
+    else:
+        df = pd.read_csv(Path("sim_data") / f"wind_5.csv")
+        t = df["time"].values
+        u = df["u"].values
+        v = df["v"].values
+        w = df["w"].values
+    # plot_1_value_time_2subplots(t, u, w,
+    #                             "V_u", "V_w",
+    #                             "m/s", "m/s",
+    #                             "Wind_velocity_components_at_r_65m",
+    #                             shear_exp,
+    #                             turb=TI)
+
+    
+
+    
+    # # induced wind
+    # wy_5 = data["w_5"]["w_y"]
+    # wz_5 = data["w_5"]["w_z"]
+
+    
+
+    # # aerodynamic loads
+    # py_5_8 = data["aero_8"]["p_y"]
+    # pz_5_8 = data["aero_8"]["p_z"]
+
+    # # wind velocity
+    # v_u = data["wind_5"]["u"]
+    # v_v = data["wind_5"]["v"]
+    # v_w = data["wind_5"]["w"]
+
+    
+    # print(f"mean of v_w: {np.mean(v_w)}")
+    # # get the average py over one revolution for element 10 for the last revolution
+    # revolution_time = 2 * np.pi / omega_init
+    # total_time = data["time"][-1]
+    # last_revolution_time = total_time - revolution_time
+    # last_revolution_indices = np.where((data["time"] >= last_revolution_time) & (data["time"] <= total_time))[0]
+
+    # load_data = {
+    #     qty: np.array([data[f"aero_{i}"][qty] for i in range(len(structure.r))])
+    #     for qty in ["p_y", "p_z"]
+    # }
+
+    # # store the average py and pz for all blade elements over the last revolution in an array
+    # py_avg = np.array([np.mean(load_data["p_y"][i][last_revolution_indices]) for i in range(len(structure.r))])
+    # pz_avg = np.array([np.mean(load_data["p_z"][i][last_revolution_indices]) for i in range(len(structure.r))])
+
+    # blade_data = {
+    #     qty: np.array([data[f"mech_out_blade_{i}"][qty] for i in range(structure.n_blades)])
+    #     for qty in ["thrust", "torque", "power"]
+    # }
+
+    # induced_velocities = {
+    #     qty: np.array([data[f"w_5_blade_{i}"][qty] for i in range(structure.n_blades)])
+    #     for qty in ["w_y", "w_z"]
+    # }
+
+    # wind_speeds = {
+    #     qty: np.array([data[f"wind_5_blade_{i}"][qty] for i in range(structure.n_blades)])
+    #     for qty in ["u", "v", "w"]
+    # }
+
+    # timeseries uvw
+    
+
+
+    # blade_data["thrust"] has shape (n_blades, n_steps)
+    # blade_data["thrust"][0] is thrust for blade 0, etc.
+
+    # total_thrust = blade_data["thrust"].sum(axis=0)
+    # total_torque = blade_data["torque"].sum(axis=0)
+    # total_power  = blade_data["power"].sum(axis=0)
+
+
+
+    # # normalize data to compare across dimensions
+    # total_thrust_normalized = total_thrust / np.max(np.abs(total_thrust))
+    # print(f" max total thrust: {np.max(np.abs(total_thrust))}")
+    # total_torque_normalized = total_torque / np.max(np.abs(total_torque))
+    # total_power_normalized = total_power / 10e6
+
+    # # compute average total power with the last revolution
+    # avg_power = np.mean(total_power[last_revolution_indices])
+    # print(f"Average power for each blade over the last revolution: {avg_power:.3e} W")
+    # avg_thrust = np.mean(total_thrust[last_revolution_indices])
+    # print(f"Average thrust for each blade over the last revolution: {avg_thrust:.3e} N")
+
+    # py_avg_normalized = py_avg / np.max(np.abs(py_avg))
+    # pz_avg_normalized = pz_avg / np.max(np.abs(pz_avg))
+
+
+    # # load data from steady bem code located in data folder (csv file)
+    # df_stdy_bem = pd.read_csv("data/BEM_46310.csv")
+    # stdy_py = df_stdy_bem["p_t_torque"].values
+    # stdy_pz = df_stdy_bem["p_n_thrust"].values
+
+    print("\n")
+
+    #%% PLOTTING
+    
+
+
+    plot_flexible(
+        t,
+        y_values=[[u, v, w]],              # one subplot, three curves
+        labels=[["u", "v", "w"]],          # one label-list for that subplot
+        x_label="Time (s)",
+        y_units=["Wind speed [m/s]"],      # exactly one entry (one subplot)
+        save_name="uvw",
+        shear_exp=shear_exp
+    )
+
+
+    
+    
