@@ -216,14 +216,32 @@ class TurbWind(Wind):
 
         self.x_turb = np.arange(nx) * dx + (simulation.structure.hub_height - (nx - 1) * dx / 2)
         self.y_turb = np.arange(ny) * abs(dy) - (ny - 1) * abs(dy) / 2
-        self.z_turb  = np.arange(nz) * dz -self.Lx #position box initially upstream of rotor by shift of one box length (Lx) to allow it to advect through the rotor plane during the simulation
+        self.z_turb  = np.arange(nz) * dz -self.Lx # position box initially upstream of rotor by shift of one box length (Lx) to allow it to advect through the rotor plane during the simulation
 
         self.da_mann_box = self.da_mann_box.assign_coords(x=self.x_turb, y=self.y_turb, z=self.z_turb)
 
-        
+       
     def __call__(self, xyz):
 
         xyz = np.atleast_2d(xyz)
+
+        # Add surrounding wind
+        base = np.atleast_2d(self.surrounding_wind(xyz))
+
+        # Check if any query points are within the box bounds
+        z_min, z_max = self.z_turb[0], self.z_turb[-1]
+        x_min, x_max = self.x_turb[0], self.x_turb[-1]
+        y_min, y_max = self.y_turb[0], self.y_turb[-1]
+
+        in_bounds = (
+            (xyz[:, 0] >= x_min) & (xyz[:, 0] <= x_max) &
+            (xyz[:, 1] >= y_min) & (xyz[:, 1] <= y_max) &
+            (xyz[:, 2] >= z_min) & (xyz[:, 2] <= z_max)
+        )
+
+        if not np.any(in_bounds):
+            print(f"outside turb box bounds, returning {base}")
+            return base.squeeze()
         
         # Wrap coordinates in DataArrays with a shared dimension 'points'
         # This forces xarray to interpolate rowwise (point-by-point) instead of a 3D mesh
@@ -231,6 +249,26 @@ class TurbWind(Wind):
         x_da = xr.DataArray(xyz[:, 0], dims='points', coords={'points': points})
         y_da = xr.DataArray(xyz[:, 1], dims='points', coords={'points': points})
         z_da = xr.DataArray(xyz[:, 2], dims='points', coords={'points': points})
+
+        # Box coordinates
+        x_box = self.da_mann_box["x"]
+        y_box = self.da_mann_box["y"]
+        z_box = self.da_mann_box["z"]
+
+
+        # Check if rotor is outside box
+        if xyz[:,0].min() < float(x_box[0]):
+            print("Rotor extends below box in x direction")
+        if xyz[:,0].max() > float(x_box[-1]):
+            print("Rotor extends above box in x direction")
+        if xyz[:,1].min() < float(y_box[0]):
+            print("Rotor extends below box in y direction")
+        if xyz[:,1].max() > float(y_box[-1]):
+            print("Rotor extends above box in y direction")
+        if xyz[:,2].min() < float(z_box[0]):
+            print("Rotor extends below box in z direction")
+        if xyz[:,2].max() > float(z_box[-1]):
+            print("Rotor extends above box in z direction")
 
         # Interpolate pointwise: result shape is (3, n_points) instead of (3, nx, ny, nz)
         uvw_interp = self.da_mann_box.interp(x=x_da, y=y_da, z=z_da, method='linear')
@@ -240,11 +278,10 @@ class TurbWind(Wind):
         # uvw_interp has dims (uvw, points) → transpose to (points, uvw)
         turb_var = uvw_interp.values.T  # shape: (n_points, 3)
 
-        # print(f"Interpolated turbulence at points {xyz} is {turb_var}")
+        # Replace NaNs with 0 for out-of-bounds points (adds 0 turbulence = free wind only)
+        turb_var = np.nan_to_num(turb_var, nan=0.0)
 
-        # Add surrounding wind
-        base = np.atleast_2d(self.surrounding_wind(xyz))
-        # print(f"Surrounding wind at points {xyz} is {base}")
+        # print(f"Interpolated turbulence at points {xyz} is {turb_var}")
 
         result = (base + turb_var).squeeze()
 
@@ -266,84 +303,3 @@ class TurbWind(Wind):
     @property
     def v_hub_mean(self) -> float:
         return self.surrounding_wind.v_hub_mean
-
-# class MannTurbulenceBox:
-#     def __init__(self, umean, hub_height) -> None:
-#         from scipy.interpolate import RegularGridInterpolator
-
-#         FILENAME_U = "Turbulence_generator/sim1.bin"  # z1
-#         FILENAME_V = "Turbulence_generator/sim2.bin"  # -y1
-#         FILENAME_W = "Turbulence_generator/sim3.bin"  # x1
-
-#         n1, n2, n3 = [4096, 32, 32]
-#         Ly, Lz = [180, 180]
-
-#         self.umean = umean
-
-#         # Grid spacing (isotropic)
-#         deltay = Ly / (n2 - 1)
-#         deltax = deltay
-#         deltaz = Lz / (n3 - 1)
-
-#         # Spatial grids matching MATLAB: interp2(y_turb, x_turb, u_plane, pos_y, pos_x)
-#         # x_turb: height axis centered around tower_height (rotor x-coord)
-#         # y_turb: lateral axis centered around 0
-#         x_turb = np.arange(n3) * deltax + (hub_height - (n3 - 1) * deltax / 2)
-#         y_turb = np.arange(n2) * deltay - ((n2 - 1) * deltay) / 2
-
-#         # Time axis (Taylor's frozen turbulence)
-#         self.Lx = n1 * deltax
-#         t_grid = np.arange(n1) * deltax  # x = umean * t → grid in advection distance
-
-#         self.interpolators = []
-#         for filename in [FILENAME_U, FILENAME_V, FILENAME_W]:
-#             data = np.fromfile(filename, np.dtype('<f'), -1)
-#             assert len(data) == n1 * n2 * n3, f"File {filename} has wrong size"
-#             # Reshape: (n1=time, n2=lateral y, n3=height x)
-#             box = data.reshape(n1, n2, n3)
-#             # Grid: (t_grid, y_turb, x_turb) → query with (t, pos_y, pos_x)
-#             self.interpolators.append(RegularGridInterpolator(
-#                 (t_grid, y_turb, x_turb),
-#                 box,
-#                 method='linear',
-#                 bounds_error=False,
-#                 fill_value=0.0
-#             ))
-
-#         self.current_time = 0.0
-
-#     def step(self, dt):
-#         self.current_time += dt
-
-#     def __call__(self, xyz):
-#         xyz = np.atleast_2d(xyz)
-#         # Taylor's frozen turbulence: advect box past rotor
-#         # Equivalent to MATLAB: interp2(y_turb, x_turb, u_plane, pos_y(i), pos_x(i))
-#         t_coord = (self.umean * self.current_time) % self.Lx  # periodic in time
-#         t_query = np.full(len(xyz), t_coord)
-
-#         pos_x = xyz[:, 0]  # height (x in rotor coords)
-#         pos_y = xyz[:, 1]  # lateral (y in rotor coords)
-
-#         query = np.c_[t_query, pos_y, pos_x]  # (t, pos_y, pos_x) matches interp2(y_turb, x_turb, ...)
-
-#         u_turb = self.interpolators[0](query)  # streamwise (z in rotor)
-#         v_turb = self.interpolators[1](query)  # lateral    (y in rotor)
-#         w_turb = self.interpolators[2](query)  # vertical   (x in rotor)
-
-#         return np.c_[w_turb, v_turb, u_turb]
-
-
-
-# class TurbWind(Wind):
-#     def __init__(self, turbulence_box: MannTurbulenceBox, surrounding_wind: Wind) -> None:
-#         self.turbulence_box = turbulence_box
-#         self.surrounding_wind = surrounding_wind
-
-#     def __call__(self, xyz):
-#         base = np.atleast_2d(self.surrounding_wind(xyz))
-#         turb = np.atleast_2d(self.turbulence_box(xyz))
-#         return (base + turb).squeeze()
-    
-#     def step(self, simulation):
-#         self.turbulence_box.step(simulation.dt)

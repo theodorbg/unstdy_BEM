@@ -69,6 +69,19 @@ def time_recorder():
     return Recorder(time, "time", ("time",))
 
 
+def pitch_recorder(name: str, blade_idx: int):
+    """Recorder for the pitch angle, which is the same for all blades."""
+    def rec(simulation):
+        return simulation.structure.pitch[blade_idx] # Assuming all blades have the same pitch angle, we can just return the pitch of the first blade.
+    return Recorder(rec, name, "pitch")
+
+def omega_recorder(name: str):
+    """Recorder for the rotational speed of the rotor."""
+    def rec(simulation):
+        return simulation.structure.omega_shaft
+    return Recorder(rec, name, "omega")
+
+
 def blade_position_1_recorder(name: str, blade_idx: int, element_idx: int):
     def blade_pos(simulation):
         return simulation.structure.blade_x1(blade_idx)[element_idx]
@@ -105,13 +118,13 @@ def w_5_recorder(name: str, blade_idx: int, element_idx: int):
         # vrel_z     = simulation.aero.rotor.blades[blade_idx].vrel[1, element_idx]
         # v0_y       = simulation.aero.rotor.blades[blade_idx].v0[0, element_idx]
         # v0_z       = simulation.aero.rotor.blades[blade_idx].v0[1, element_idx]
-        # w_y_qs     = simulation.aero.rotor.blades[blade_idx].w_qs[0, element_idx]
-        # w_z_qs     = simulation.aero.rotor.blades[blade_idx].w_qs[1, element_idx]
+        w_y_qs     = simulation.aero.rotor.blades[blade_idx].w_qs[0, element_idx]
+        w_z_qs     = simulation.aero.rotor.blades[blade_idx].w_qs[1, element_idx]
         # w_y_int    = simulation.aero.rotor.blades[blade_idx].w_int[0, element_idx]
         # w_z_int    = simulation.aero.rotor.blades[blade_idx].w_int[1, element_idx]
-        return w_y, w_z #, vrel_y, vrel_z, v0_y, v0_z, w_y_qs, w_z_qs, w_y_int, w_z_int
+        return w_y, w_z, w_y_qs, w_z_qs #, vrel_y, vrel_z, v0_y, v0_z, w_y_qs, w_z_qs, w_y_int, w_z_int
 
-    return Recorder(w5, name, ("w_y", "w_z")) # "vrel_y", "vrel_z", "v0_y", "v0_z", "w_qs_y", "w_qs_z", "w_int_y", "w_int_z"))
+    return Recorder(w5, name, ("w_y", "w_z", "w_y_qs", "w_z_qs")) # "vrel_y", "vrel_z", "v0_y", "v0_z", "w_qs_y", "w_qs_z", "w_int_y", "w_int_z"))
 
 
 def p_5_recorder(name: str, blade_idx: int, element_idx: int):
@@ -156,7 +169,7 @@ def p_5_recorder(name: str, blade_idx: int, element_idx: int):
     return Recorder(aero5, name, ("p_y", "p_z"))
 
 
-def mech_out_recorder(name: str, blade_idx: int):
+def mech_out_bladewise_recorder(name: str, blade_idx: int):
     def mech_out(simulation):
         """Record aerodynamic variables for a blade element.
         Parameters
@@ -197,3 +210,41 @@ def mech_out_recorder(name: str, blade_idx: int):
         return thrust, torque, power
 
     return Recorder(mech_out, name, ("thrust", "torque", "power"))
+
+
+def mech_out_rotor_recorder(name: str):
+    def mech_out(simulation):
+        """Record aerodynamic variables for a blade element.
+        Parameters
+
+        """
+
+        thrust = simulation.aero.rotor.thrust
+        torque = simulation.aero.rotor.torque
+        power = simulation.aero.rotor.power
+
+        return thrust, torque, power
+
+    return Recorder(mech_out, name, ("thrust", "torque", "power"))
+
+def generator_out_recorder(name: str):
+    def gen_out(simulation):
+        """Record generator output."""
+        torque_gen = simulation.controller.torque_gen
+        power_gen = torque_gen * simulation.structure.omega_shaft
+
+        return torque_gen, power_gen
+
+    return Recorder(gen_out, name, ("torque_gen", "power_gen"))
+
+
+def controller_recorder(name: str):
+    def integral_term(simulation):
+        integral_term = simulation.controller.pitch_i
+        prev_integral_term = simulation.controller.pitch_i_prev
+        gk = simulation.controller.gk
+
+
+        return integral_term, prev_integral_term, gk
+    
+    return Recorder(integral_term, name, ("pitch_i", "prev_pitch_i", "gk"))
