@@ -9,6 +9,7 @@ from recorder import (
     pitch_recorder,
     blade_position_1_recorder,
     blade_velocity_5_recorder,
+    time_recorder,
     wind_5_recorder,
     p_5_recorder,
     w_5_recorder,
@@ -36,7 +37,11 @@ do = {
     "ass_1_4_no_turb_w_tower": False,
     "ass_1_4_plot_comparison": False,
     "ass_1_4_plot": False,
-    "controller_test": True
+    "controller_test": False,
+    "sec_yaw_20deg_geo": False,
+    "sec_yaw_20deg_empirical": False,
+    "sec_yaw_0deg": False,
+    "sec_yaw_plot": True
 }
 
 if do["test"]:
@@ -2557,4 +2562,415 @@ if do["controller_test"]:
     #         y_units=[["Power [MW]"], [r"\omega \frac{rad}{s}"]],
     #         save_name="pitch_test",
     #         shear_exp=shear_exp)
-   
+
+if do["sec_yaw_20deg_geo"]:
+    
+    #%% SET UP SIMULATION
+    # structural parameters
+    omega_init = 0.72
+    yaw = 20
+    tilt = 0 
+
+    # STRUCTURE INITIALISATION
+    structure = RigidStructure(omega_init, yaw=yaw, tilt=tilt, pitch_init = [0, 0, 0])
+    # radial distance index of evaluation
+    print(structure.r)
+    r_eval_idx = 57
+    print(f"Radial distance at index {r_eval_idx}: {structure.r[r_eval_idx]}")
+
+    # Wind parameters
+    shear_exp = 0
+    V_hub = 8
+    # turbulence_box = MannTurbulenceBox(umean=V_hub, hub_height=structure.hub_height)
+    TI = 0
+
+    # Tower parameters
+    tower_effects = False
+
+    # Aero parameters
+    use_dyn_wake=True
+    use_dyn_stall=True
+    use_wake_effects = "geometrical"
+
+    # Simulation parameters
+    N = 8
+    # T = N * 2 * np.pi / omega_init
+    T = 200
+    print(f"\nTotal simulation time: {T:.2f} seconds")
+    dt = 0.1
+    print(f"Time step: {dt:.4f} seconds, Number of steps: {int(T/dt)}")
+
+    # PITCH SCHEDULE INITIALISATION
+    # def pitch_schedule(t):
+    #     if t < 100:
+    #         return [0.0, 0.0, 0.0]
+    #     elif t < 150:
+    #         return [2.0, 2.0, 2.0]
+    #     else:
+    #         return [0.0, 0.0, 0.0]
+
+    # structure.pitch_schedule = pitch_schedule
+    # if hasattr(structure, 'pitch_schedule') and structure.pitch_schedule is not None:
+        # print(f"Pitch schedule  (deg)= (t<100s, p= {pitch_schedule(0)} ) , (t<150s p={pitch_schedule(100)} ), (t>150s p={pitch_schedule(150)}) ")
+    hub_height = structure.hub_height
+    # Define wind with tower effect
+    tower_radius = np.asarray(  # columns are [x, tower radius]
+        [
+            [0, structure.bot_thickness],
+            [structure.hub_height, structure.top_thickness],
+        ]
+    )
+
+    # WIND INITIALISATION
+    if shear_exp != 0:
+        print(f"Using shear wind with exponent {shear_exp}")
+        wind_profile = ShearWind(hub_height, V_hub, shear_exp)
+    else:
+        print(f"Using constant wind with V_hub={V_hub} m/s")
+        wind_profile = ConstantWind(V_hub)
+    if tower_effects:
+        print(f"Including tower effects")
+        wind_profile = WindWithTower(y_tower=0, z_tower=0, xa=tower_radius, surrounding_wind=wind_profile)
+    else:
+        print(f"Not including tower effects")
+        # wind_profile = surrounding_wind
+    if TI > 0:
+        print(f"Including turbulence box")
+        wind_profile = TurbWind(wind_profile, TI)
+    else:
+        print(f"Not including turbulence box")
+        
+    # AERO INITIALISATION
+    aero = Aero(V_hub, use_dyn_wake=use_dyn_wake, use_dyn_stall=use_dyn_stall, use_wake_effects=use_wake_effects)
+
+    # CONTROLLER INITIALISATION
+    use_controller=True
+    controller = Controller(tsr = 7.8, cp_max = 0.41, use_controller = use_controller)
+
+    
+    #%% RECORDERS    
+    recorders = []
+    recorders.append(mech_out_rotor_recorder(name="mech_out_rotor"))
+    recorders.append(omega_recorder(name="omega"))
+    recorders.append(pitch_recorder(name="pitch", blade_idx=0))
+    recorders.append(generator_out_recorder(name="generator_out"))
+    recorders.append(controller_recorder(name="integral_term"))
+    recorders.append(w_5_recorder(name=f"w_5_yaw{yaw}_{use_wake_effects}", blade_idx=0, element_idx=r_eval_idx)) # induced wind at r=65m
+    
+
+    #%% Set up simulation, run, and save wind recorder data1
+    print(f"\nRunning simulation with parameters:\n")
+    print(f"omega init = {omega_init:.2f} rad/s ")
+    print(f"yaw = {yaw} degrees,")
+    print(f"tilt = {tilt} degrees")
+    print(f"shear_exp = {shear_exp}")
+    print(f"V_hub={V_hub} m/s")
+    print(f"use_dyn_wake = {use_dyn_wake}")
+    print(f"use_dyn_stall = {use_dyn_stall}")
+    print(f"use_wake_effects = {use_wake_effects}")
+    print(f"tower_effects = {tower_effects}")
+    print(f"controller = {use_controller}")
+
+    simulation = Simulation(structure, aero, wind=wind_profile, controller=controller, recorders=recorders)
+    simulation.run(dt, T)
+    print("\nSimulation complete. Saving data...\n")
+    simulation.save_recorders("sim_data", overwrite=True)
+
+    #%% EXTRACT DATA FROM RECORDERS
+    # Get data (saving above not needed for this) for plotting
+    data = simulation.get_recorders()
+    azimuth = data["time"] * omega_init / (2 * np.pi) * 360
+    t = data["time"]
+
+    power_mech = data["mech_out_rotor"]["power"]
+    omega = data["omega"]["omega"]
+    pitch = data["pitch"]["pitch"]
+    power_gen = data["generator_out"]["power_gen"]
+    integral_term = data["integral_term"]["pitch_i"]
+    prev_integral_term = data["integral_term"]["prev_pitch_i"]
+    gk = data["integral_term"]["gk"]
+    w_5 = data[f"w_5_yaw{yaw}_{use_wake_effects}"]["w_z"] # induced wind at r=65m, blade 0, z component
+
+if do["sec_yaw_20deg_empirical"]:
+    
+    #%% SET UP SIMULATION
+    # structural parameters
+    omega_init = 0.72
+    yaw = 20
+    tilt = 0 
+
+    # STRUCTURE INITIALISATION
+    structure = RigidStructure(omega_init, yaw=yaw, tilt=tilt, pitch_init = [0, 0, 0])
+    # radial distance index of evaluation
+    print(structure.r)
+    r_eval_idx = 57
+    print(f"Radial distance at index {r_eval_idx}: {structure.r[r_eval_idx]}")
+
+    # Wind parameters
+    shear_exp = 0
+    V_hub = 8
+    # turbulence_box = MannTurbulenceBox(umean=V_hub, hub_height=structure.hub_height)
+    TI = 0
+
+    # Tower parameters
+    tower_effects = False
+
+    # Aero parameters
+    use_dyn_wake=True
+    use_dyn_stall=True
+    use_wake_effects = "empirical"
+
+    # Simulation parameters
+    N = 8
+    # T = N * 2 * np.pi / omega_init
+    T = 200
+    print(f"\nTotal simulation time: {T:.2f} seconds")
+    dt = 0.1
+    print(f"Time step: {dt:.4f} seconds, Number of steps: {int(T/dt)}")
+
+    # PITCH SCHEDULE INITIALISATION
+    # def pitch_schedule(t):
+    #     if t < 100:
+    #         return [0.0, 0.0, 0.0]
+    #     elif t < 150:
+    #         return [2.0, 2.0, 2.0]
+    #     else:
+    #         return [0.0, 0.0, 0.0]
+
+    # structure.pitch_schedule = pitch_schedule
+    # if hasattr(structure, 'pitch_schedule') and structure.pitch_schedule is not None:
+        # print(f"Pitch schedule  (deg)= (t<100s, p= {pitch_schedule(0)} ) , (t<150s p={pitch_schedule(100)} ), (t>150s p={pitch_schedule(150)}) ")
+    hub_height = structure.hub_height
+    # Define wind with tower effect
+    tower_radius = np.asarray(  # columns are [x, tower radius]
+        [
+            [0, structure.bot_thickness],
+            [structure.hub_height, structure.top_thickness],
+        ]
+    )
+
+    # WIND INITIALISATION
+    if shear_exp != 0:
+        print(f"Using shear wind with exponent {shear_exp}")
+        wind_profile = ShearWind(hub_height, V_hub, shear_exp)
+    else:
+        print(f"Using constant wind with V_hub={V_hub} m/s")
+        wind_profile = ConstantWind(V_hub)
+    if tower_effects:
+        print(f"Including tower effects")
+        wind_profile = WindWithTower(y_tower=0, z_tower=0, xa=tower_radius, surrounding_wind=wind_profile)
+    else:
+        print(f"Not including tower effects")
+        # wind_profile = surrounding_wind
+    if TI > 0:
+        print(f"Including turbulence box")
+        wind_profile = TurbWind(wind_profile, TI)
+    else:
+        print(f"Not including turbulence box")
+        
+    # AERO INITIALISATION
+    aero = Aero(V_hub, use_dyn_wake=use_dyn_wake, use_dyn_stall=use_dyn_stall, use_wake_effects=use_wake_effects)
+
+    # CONTROLLER INITIALISATION
+    use_controller=True
+    controller = Controller(tsr = 7.8, cp_max = 0.41, use_controller = use_controller)
+
+    
+    #%% RECORDERS    
+    recorders = []
+    recorders.append(mech_out_rotor_recorder(name="mech_out_rotor"))
+    recorders.append(omega_recorder(name="omega"))
+    recorders.append(pitch_recorder(name="pitch", blade_idx=0))
+    recorders.append(generator_out_recorder(name="generator_out"))
+    recorders.append(controller_recorder(name="integral_term"))
+    recorders.append(w_5_recorder(name=f"w_5_yaw{yaw}_{use_wake_effects}", blade_idx=0, element_idx=r_eval_idx)) # induced wind at r=65m
+    
+
+    #%% Set up simulation, run, and save wind recorder data1
+    print(f"\nRunning simulation with parameters:\n")
+    print(f"omega init = {omega_init:.2f} rad/s ")
+    print(f"yaw = {yaw} degrees,")
+    print(f"tilt = {tilt} degrees")
+    print(f"shear_exp = {shear_exp}")
+    print(f"V_hub={V_hub} m/s")
+    print(f"use_dyn_wake = {use_dyn_wake}")
+    print(f"use_dyn_stall = {use_dyn_stall}")
+    print(f"use_wake_effects = {use_wake_effects}")
+    print(f"tower_effects = {tower_effects}")
+    print(f"controller = {use_controller}")
+
+    simulation = Simulation(structure, aero, wind=wind_profile, controller=controller, recorders=recorders)
+    simulation.run(dt, T)
+    print("\nSimulation complete. Saving data...\n")
+    simulation.save_recorders("sim_data", overwrite=True)
+
+    #%% EXTRACT DATA FROM RECORDERS
+    # Get data (saving above not needed for this) for plotting
+    data = simulation.get_recorders()
+    azimuth = data["time"] * omega_init / (2 * np.pi) * 360
+    t = data["time"]
+
+    power_mech = data["mech_out_rotor"]["power"]
+    omega = data["omega"]["omega"]
+    pitch = data["pitch"]["pitch"]
+    power_gen = data["generator_out"]["power_gen"]
+    integral_term = data["integral_term"]["pitch_i"]
+    prev_integral_term = data["integral_term"]["prev_pitch_i"]
+    gk = data["integral_term"]["gk"]
+    w_5 = data[f"w_5_yaw{yaw}_{use_wake_effects}"]["w_z"] # induced wind at r=65m, blade 0, z component
+  
+
+
+if do["sec_yaw_0deg"]:
+    
+    #%% SET UP SIMULATION
+    # structural parameters
+    omega_init = 0.72
+    yaw = 0
+    tilt = 0 
+
+    # STRUCTURE INITIALISATION
+    structure = RigidStructure(omega_init, yaw=yaw, tilt=tilt, pitch_init = [0, 0, 0])
+    # radial distance index of evaluation
+    print(structure.r)
+    r_eval_idx = 57
+    print(f"Radial distance at index {r_eval_idx}: {structure.r[r_eval_idx]}")
+
+    # Wind parameters
+    shear_exp = 0
+    V_hub = 8
+    # turbulence_box = MannTurbulenceBox(umean=V_hub, hub_height=structure.hub_height)
+    TI = 0
+
+    # Tower parameters
+    tower_effects = False
+
+    # Aero parameters
+    use_dyn_wake=True
+    use_dyn_stall=True
+    use_wake_effects = "geometrical"
+    # Simulation parameters
+    N = 8
+    # T = N * 2 * np.pi / omega_init
+    T = 200
+    print(f"\nTotal simulation time: {T:.2f} seconds")
+    dt = 0.1
+    print(f"Time step: {dt:.4f} seconds, Number of steps: {int(T/dt)}")
+
+    # PITCH SCHEDULE INITIALISATION
+    # def pitch_schedule(t):
+    #     if t < 100:
+    #         return [0.0, 0.0, 0.0]
+    #     elif t < 150:
+    #         return [2.0, 2.0, 2.0]
+    #     else:
+    #         return [0.0, 0.0, 0.0]
+
+    # structure.pitch_schedule = pitch_schedule
+    # if hasattr(structure, 'pitch_schedule') and structure.pitch_schedule is not None:
+        # print(f"Pitch schedule  (deg)= (t<100s, p= {pitch_schedule(0)} ) , (t<150s p={pitch_schedule(100)} ), (t>150s p={pitch_schedule(150)}) ")
+    hub_height = structure.hub_height
+    # Define wind with tower effect
+    tower_radius = np.asarray(  # columns are [x, tower radius]
+        [
+            [0, structure.bot_thickness],
+            [structure.hub_height, structure.top_thickness],
+        ]
+    )
+
+    # WIND INITIALISATION
+    if shear_exp != 0:
+        print(f"Using shear wind with exponent {shear_exp}")
+        wind_profile = ShearWind(hub_height, V_hub, shear_exp)
+    else:
+        print(f"Using constant wind with V_hub={V_hub} m/s")
+        wind_profile = ConstantWind(V_hub)
+    if tower_effects:
+        print(f"Including tower effects")
+        wind_profile = WindWithTower(y_tower=0, z_tower=0, xa=tower_radius, surrounding_wind=wind_profile)
+    else:
+        print(f"Not including tower effects")
+        # wind_profile = surrounding_wind
+    if TI > 0:
+        print(f"Including turbulence box")
+        wind_profile = TurbWind(wind_profile, TI)
+    else:
+        print(f"Not including turbulence box")
+        
+    # AERO INITIALISATION
+    aero = Aero(V_hub, use_dyn_wake=use_dyn_wake, use_dyn_stall=use_dyn_stall, use_wake_effects=use_wake_effects)
+
+    # CONTROLLER INITIALISATION
+    use_controller=True
+    controller = Controller(tsr = 7.8, cp_max = 0.41, use_controller = use_controller)
+
+    
+    #%% RECORDERS    
+    recorders = []
+    recorders.append(mech_out_rotor_recorder(name="mech_out_rotor"))
+    recorders.append(omega_recorder(name="omega"))
+    recorders.append(pitch_recorder(name="pitch", blade_idx=0))
+    recorders.append(generator_out_recorder(name="generator_out"))
+    recorders.append(controller_recorder(name="integral_term"))
+    recorders.append(w_5_recorder(name=f"w_5_yaw{yaw}", blade_idx=0, element_idx=r_eval_idx)) # induced wind at r=65m
+    
+
+    #%% Set up simulation, run, and save wind recorder data1
+    print(f"\nRunning simulation with parameters:\n")
+    print(f"omega init = {omega_init:.2f} rad/s ")
+    print(f"yaw = {yaw} degrees,")
+    print(f"tilt = {tilt} degrees")
+    print(f"shear_exp = {shear_exp}")
+    print(f"V_hub={V_hub} m/s")
+    print(f"use_dyn_wake = {use_dyn_wake}")
+    print(f"use_dyn_stall = {use_dyn_stall}")
+    print(f"use_wake_effects = {use_wake_effects}")
+    print(f"tower_effects = {tower_effects}")
+    print(f"controller = {use_controller}")
+
+    simulation = Simulation(structure, aero, wind=wind_profile, controller=controller, recorders=recorders)
+    simulation.run(dt, T)
+    print("\nSimulation complete. Saving data...\n")
+    simulation.save_recorders("sim_data", overwrite=True)
+
+    #%% EXTRACT DATA FROM RECORDERS
+    # Get data (saving above not needed for this) for plotting
+    data = simulation.get_recorders()
+    azimuth = data["time"] * omega_init / (2 * np.pi) * 360
+    t = data["time"]
+
+    power_mech = data["mech_out_rotor"]["power"]
+    omega = data["omega"]["omega"]
+    pitch = data["pitch"]["pitch"]
+    power_gen = data["generator_out"]["power_gen"]
+    integral_term = data["integral_term"]["pitch_i"]
+    prev_integral_term = data["integral_term"]["prev_pitch_i"]
+    gk = data["integral_term"]["gk"]
+    w_5 = data[f"w_5_yaw{yaw}"]["w_z"] # induced wind at r=65m, blade 0, z component
+    df_yaw20 = pd.read_csv("sim_data/w_5_yaw20.csv")
+    w_5_yaw = df_yaw20["w_z"].values
+
+if do["sec_yaw_plot"]:
+    df_yaw20_geo = pd.read_csv("sim_data/w_5_yaw20_geometrical.csv")
+    df_yaw20_empirical = pd.read_csv("sim_data/w_5_yaw20_empirical.csv")
+    df_yaw0 = pd.read_csv("sim_data/w_5_yaw0.csv")
+
+    t = df_yaw20_geo["time"].values
+    w_5_yaw20_geo = df_yaw20_geo["w_z"].values
+    w_5_yaw20_empirical = df_yaw20_empirical["w_z"].values
+    w_5_yaw0 = df_yaw0["w_z"].values
+
+    #%% PLOTTING
+    yaw = 20
+    r_pos = 58
+    shear_exp = 0
+    plot_flexible(
+        x_val=t,
+        y_values=[[-w_5_yaw20_geo, -w_5_yaw20_empirical, -w_5_yaw0]],  # one subplot, three curves
+        labels=[[f"w_z, yaw={yaw}deg, geometrical", f"w_z, yaw=20deg, empirical", f"w_z, yaw=0deg"]],  # one subplot, three labels
+        x_label="Time [s]",
+        y_units=["Induced wind w_z [m/s]"],  # exactly one entry (one subplot)
+        save_name=f"sec_yaw_at_r_{r_pos}m",
+        shear_exp=shear_exp
+    )
+ 

@@ -15,15 +15,23 @@ class Aero:
     
     RHO = 1.225
     
-    def __init__(self, V_hub, glauert = False, use_dyn_wake = False, use_dyn_stall = False) -> None:
+    def __init__(self,
+                 V_hub,
+                 glauert = False,
+                 use_dyn_wake = False,
+                 use_dyn_stall = False,
+                 use_wake_effects: bool | str = True) -> None:
+           
+           """Initialize the Aero class with given parameters."""
            self.V_hub = V_hub
            self.rotor = None
            self.use_dyn_wake = use_dyn_wake
            self.use_dyn_stall = use_dyn_stall
+           self.use_wake_effects = use_wake_effects
+           self._wake_r_idx = 0
 
-    
 
-    def step(self, simulation: Simulation):
+    def step(self, simulation):
         """
         Perform some operation on instance data.
         
@@ -135,22 +143,28 @@ class Aero:
                 blade.w_qs[0] = (-B*lift*sin(phi)) / denominator
                 blade.w_qs[1] = (-B*lift*cos(phi)) / denominator
 
-                if self.wake_effect and simulation.structure.yaw != 0:
+                if self.use_wake_effects and simulation.structure.yaw != 0:
                     blade_azi = simulation.structure.blade_azimuth(blade.blade_idx)
                     d_azi = blade_azi - simulation.structure.max_downstream_azi
-                    if self.wake_effect == "geometrical" or self.wake_effect is True:
-                        W_wake5 = blade.w
+                    if self.use_wake_effects == "geometrical" or self.use_wake_effects is True:
+                        # take the mean over the blades, at the radius where the wake effects are calculated (0.7R)
+                        W_wake_yz = np.mean([b.w[:, self._wake_r_idx] for b in self.rotor.blades],axis=0)  # shape (2,) -> [Wy, Wz]
+
+                        # rotation functions expect 3D vectors, prepend x=0
+                        W_wake5 = np.array([0.0, W_wake_yz[0], W_wake_yz[1]])
+
                         W_wake2 = Rotation.rotate_3d_y(W_wake5, simulation.structure.tilt)
                         W_wake1 = Rotation.rotate_3d_x(W_wake2, simulation.structure.yaw)
-                        V_wake = np.asarray([0, 0, simulation.wind.hub_mean]) + W_wake1
+                        V_wake = np.asarray([0, 0, simulation.wind.v_hub_mean]) + W_wake1
                         chi = np.arccos(np.dot(simulation.structure.rotor_normal, V_wake) / np.linalg.norm(V_wake))
-                    elif self.wake_effect == "empirical":
-                        Ct = self.rotor.thrust / (0.5 * self.RHO * np.pi * R**2 * simulation.wind.v_hub_mean**2)
+
+                    elif self.use_wake_effects == "empirical":
+                        Ct = self.rotor._thrust / (0.5 * self.RHO * np.pi * R**2 * simulation.wind.v_hub_mean**2)
                         a_glob = 0.246 * Ct + 0.0586 * Ct**2 + 0.0883 * Ct**3
                         chi = (0.6 * a_glob + 1) * simulation.structure.yaw
                     else:
-                        raise NotImplementedError(f"{self.wake_effect=} but implemented are 'geometrical', 'empirical'.")
-                    W_qs *= 1 + self.r[na, :, na] / R * np.tan(chi / 2) * np.cos(d_azi[:, na, na])
+                        raise NotImplementedError(f"{self.use_wake_effects=} but implemented are 'geometrical', 'empirical'.")
+                    blade.w_qs *= 1 + blade.r / R * np.tan(chi / 2) * np.cos(d_azi)
                     
 
 
@@ -166,19 +180,21 @@ class Aero:
                                                         r)
 
                 # compute thrust
-                blade.thrust = np.trapezoid(blade.p[1], blade.r)
-                blade.torque = np.trapezoid(blade.p[0]*blade.r, blade.r)
-                blade.power = blade.torque * omega
+                blade._thrust = np.trapezoid(blade.p[1], blade.r)
+                blade._torque = np.trapezoid(blade.p[0]*blade.r, blade.r)
+                blade._power = blade._torque * omega
 
             # sum thrust, torque and power over blades
-            self.rotor.torque = sum(blade.torque for blade in self.rotor.blades)
-            self.rotor.thrust = sum(blade.thrust for blade in self.rotor.blades)
-            self.rotor.power = sum(blade.power for blade in self.rotor.blades)
+            self.rotor._torque = sum(blade._torque for blade in self.rotor.blades)
+            self.rotor._thrust = sum(blade._thrust for blade in self.rotor.blades)
+            self.rotor._power = sum(blade._power for blade in self.rotor.blades)
 
     def simulation_init(self, simulation):
         self.no_blades = simulation.structure.n_blades
         self.no_blade_sections = len(simulation.structure.r)
         self.rotor = Rotor(simulation, self.no_blades, self.no_blade_sections)
+        self._wake_r_idx = np.argmax(self.rotor.blades[0].r >= simulation.structure.R * 0.7)  # used for the geometrical wake effects
+
 
     def dyn_wake(self, simulation, w_qs, w_qs_prev, w_int, w, a, R, V_hub, r):
         """
@@ -285,9 +301,9 @@ class Aero:
 class Rotor:    
 
     def __init__(self, simulation, no_blades, no_blade_sections) -> None:
-        self.torque = 0.0
-        self.thrust = 0.0
-        self.power = 0.0
+        self._torque = 0.0
+        self._thrust = 0.0
+        self._power = 0.0
         self.blades = []
         for i in range(no_blades):
              self.blades.append(Blade(simulation, i, no_blade_sections))
@@ -311,12 +327,28 @@ class Blade:
         # blade data from structure for easy access in the step function
         self.chord = simulation.structure.c
         self.r = simulation.structure.r
+        self.R = simulation.structure.R
         self.twist = simulation.structure.twist
         self.tc = simulation.structure.tc
         # outcommented for dynamic pitch
         # self.pitch = simulation.structure.pitch[self.blade_idx]
 
 
-        self.thrust = 0.0
-        self.torque = 0.0
-        self.power = 0.0
+        self._thrust = 0.0
+        self._torque = 0.0
+        self._power = 0.0
+
+    @property
+    def get_p(self):
+        return self._p
+    
+    @property
+    def thrust(self):
+        return np.trapezoid(self.p[1], self.r)
+
+    @property
+    def torque(self):
+        return np.trapezoid(self.p[0]*self.r, self.r)
+    
+    def power(self, simulation):
+        return self.torque * simulation.structure.omega_shaft
