@@ -21,7 +21,9 @@ class Aero:
            self.use_dyn_wake = use_dyn_wake
            self.use_dyn_stall = use_dyn_stall
 
-    def step(self, simulation):
+    
+
+    def step(self, simulation: Simulation):
         """
         Perform some operation on instance data.
         
@@ -132,6 +134,25 @@ class Aero:
                 # calculate quasi steady induction wind 
                 blade.w_qs[0] = (-B*lift*sin(phi)) / denominator
                 blade.w_qs[1] = (-B*lift*cos(phi)) / denominator
+
+                if self.wake_effect and simulation.structure.yaw != 0:
+                    blade_azi = simulation.structure.blade_azimuth(blade.blade_idx)
+                    d_azi = blade_azi - simulation.structure.max_downstream_azi
+                    if self.wake_effect == "geometrical" or self.wake_effect is True:
+                        W_wake5 = blade.w
+                        W_wake2 = Rotation.rotate_3d_y(W_wake5, simulation.structure.tilt)
+                        W_wake1 = Rotation.rotate_3d_x(W_wake2, simulation.structure.yaw)
+                        V_wake = np.asarray([0, 0, simulation.wind.hub_mean]) + W_wake1
+                        chi = np.arccos(np.dot(simulation.structure.rotor_normal, V_wake) / np.linalg.norm(V_wake))
+                    elif self.wake_effect == "empirical":
+                        Ct = self.rotor.thrust / (0.5 * self.RHO * np.pi * R**2 * simulation.wind.v_hub_mean**2)
+                        a_glob = 0.246 * Ct + 0.0586 * Ct**2 + 0.0883 * Ct**3
+                        chi = (0.6 * a_glob + 1) * simulation.structure.yaw
+                    else:
+                        raise NotImplementedError(f"{self.wake_effect=} but implemented are 'geometrical', 'empirical'.")
+                    W_qs *= 1 + self.r[na, :, na] / R * np.tan(chi / 2) * np.cos(d_azi[:, na, na])
+                    
+
 
                 if self.use_dyn_wake:
                     blade.w, blade.w_int = self.dyn_wake(simulation,
