@@ -98,6 +98,9 @@ class Structure(ABC):
         self.inertia_rotor = 1.6e8
         self._x5_blade = np.c_[self.r, np.zeros_like(self.r), np.zeros_like(self.r)]
 
+        self.max_downstream_azi = self._max_downstream_azimuth(self.yaw, self.tilt)
+        self.rotor_normal = self._rotor_normal(self.yaw, self.tilt)
+
     @abstractmethod
     def step(self, simulation):
         pass
@@ -107,6 +110,34 @@ class Structure(ABC):
             raise ValueError(f"Structure only has '{self.n_blades}' blades, but {blade_idx=}.")
         return self.phi_shaft + blade_idx * 2 * np.pi / self.n_blades
 
+        def _set_angle(self, angle_name: str, angle_value: float):
+        """
+        Set the angle `angle_name` of the instance to the value `np.deg2rad(value)`. Afterwards, update
+        `max_downstream_azimuth` and `rotor_normal`.
+
+        Parameters
+        ----------
+        angle_name : str
+            Name of the angle attribute of the `StructureBase` instance.
+        angle_value : float
+            Angle in radians.
+        """
+        setattr(self, angle_name, np.deg2rad(angle_value))
+        self.max_downstream_azimuth = self._max_downstream_azimuth(self.yaw, self.tilt)
+        self.rotor_normal = self._rotor_normal(self.yaw, self.tilt)
+
+    @staticmethod
+    def _max_downstream_azimuth(yaw: float, tilt: float) -> float:
+        if np.isclose(tilt, 0):  # Equation from the lecture doesn't hold for tilt=0.
+            return np.pi / 2 if yaw >= 0 else -np.pi / 2
+        return np.arctan(-np.tan(yaw) / (np.sin(tilt)))
+
+    @staticmethod
+    def _rotor_normal(yaw: float, tilt: float) -> np.ndarray:
+        # Cone doesn't influence the rotor normal for the wake skew calculation
+        normal4 = np.asarray([0, 0, 1])
+        normal2 = Rotation.rotate_3d_y(normal4, tilt)
+        return Rotation.rotate_3d_x(normal2, yaw)
 
 class RigidStructure(Structure):
 
