@@ -203,9 +203,9 @@ def mech_out_bladewise_recorder(name: str, blade_idx: int):
 
         """
 
-        thrust = simulation.aero.rotor.blades[blade_idx].thrust
-        torque = simulation.aero.rotor.blades[blade_idx].torque
-        power = simulation.aero.rotor.blades[blade_idx].power
+        thrust = simulation.aero.rotor.blades[blade_idx]._thrust
+        torque = simulation.aero.rotor.blades[blade_idx]._torque
+        power = simulation.aero.rotor.blades[blade_idx]._power
 
         return thrust, torque, power
 
@@ -219,9 +219,9 @@ def mech_out_rotor_recorder(name: str):
 
         """
 
-        thrust = simulation.aero.rotor.thrust
-        torque = simulation.aero.rotor.torque
-        power = simulation.aero.rotor.power
+        thrust = simulation.aero.rotor._thrust
+        torque = simulation.aero.rotor._torque
+        power = simulation.aero.rotor._power
 
         return thrust, torque, power
 
@@ -248,3 +248,67 @@ def controller_recorder(name: str):
         return integral_term, prev_integral_term, gk
     
     return Recorder(integral_term, name, ("pitch_i", "prev_pitch_i", "gk"))
+
+
+def power_blade_recorder(blade_idx: int):
+    def get_power(simulation):
+        return simulation.aero.rotor.blades[blade_idx].power
+    
+    return Recorder(get_power, "power", ("power",))
+
+def power_rotor_recorder():
+    def get_power(simulation):
+        return sum(blade.power for blade in simulation.aero.rotor.blades)
+    
+    return Recorder(get_power, "power", ("power",))
+
+def torque_blade_recorder(blade_idx: int):
+    def get_torque(simulation):
+        return simulation.aero.rotor.blades[blade_idx].torque
+    
+    return Recorder(get_torque, "torque", ("torque",))
+
+def torque_rotor_recorder():
+    def get_torque(simulation):
+        return sum(blade.torque for blade in simulation.aero.rotor.blades)
+    
+    return Recorder(get_torque, "torque", ("torque",))
+
+def thrust_blade_recorder(blade_idx: int):
+    def get_thrust(simulation):
+        return simulation.aero.rotor.blades[blade_idx].thrust
+    
+    return Recorder(get_thrust, "thrust", ("thrust",))
+
+def mech_blade_recorder(blade_idx: int):
+    def get_mech(simulation):
+        thrust = simulation.aero.rotor.blades[blade_idx].thrust
+        torque = simulation.aero.rotor.blades[blade_idx].torque
+        power = simulation.aero.rotor.blades[blade_idx].power
+
+        return thrust, torque, power
+
+    return Recorder(get_mech, f"mech_blade_{blade_idx}", ("thrust", "torque", "power"))
+
+def mech_rotor_recorder():
+    def get_mech(simulation):
+        """ Sum the mechanical output of all blades to get the total mechanical output of the rotor."""
+        
+        thrust = sum(blade.thrust for blade in simulation.aero.rotor.blades)
+        torque = sum(blade.torque for blade in simulation.aero.rotor.blades)
+        power = sum(blade.power for blade in simulation.aero.rotor.blades)
+      
+
+        return thrust, torque, power
+
+    return Recorder(get_mech, "mech_rotor", ("thrust", "torque", "power"))
+
+def p_recorder(blade_idx: int=0, n_elements=18):
+    def get_p(simulation):
+        """Record the aerodynamic load p for all blade elements of a blade."""
+        p_y = simulation.aero.rotor.blades[blade_idx].p[0, :n_elements]
+        p_z = simulation.aero.rotor.blades[blade_idx].p[1, :n_elements]
+
+        return np.concatenate((p_y, p_z))
+
+    return Recorder(get_p, f"p_blade_{blade_idx}", tuple(f"p_{i}" for i in range(2*n_elements)))

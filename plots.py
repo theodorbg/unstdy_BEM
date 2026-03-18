@@ -697,6 +697,7 @@ def plot_flexible(
         axes[0].set_xlim(xlims[0], xlims[1])  # shared x axis, only need to set once
 
     axes[-1].set_xlabel(x_label)
+    plt.title(save_name.replace("_", " ").title(), fontsize=FONT_SIZE)
     plt.tight_layout()
     plt.savefig(save_path / f"{save_name}.png")
     if show_plot:
