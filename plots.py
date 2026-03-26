@@ -8,8 +8,15 @@ from pathlib import Path
 FONT_SIZE = 40
 # Default line styles and widths to cycle through
 LINE_STYLES = ['-', '--', '-.', ':']
-# LINE_STYLES = [':']
+LINE_STYLES = ['-']
 LINE_WIDTH  = 8
+# --- NEW: global tick-density controls ---
+X_MAJOR_NBINS = 8            # for MaxNLocator on x in plot_flexible
+Y_MAJOR_NBINS = 8            # for MaxNLocator on y in plot_flexible
+X_MINOR_SUBDIV = 2           # AutoMinorLocator subdivisions
+Y_MINOR_SUBDIV = 2           # AutoMinorLocator subdivisions
+PSD_X_MAJOR_STEP = 1.0       # major x-step in plot_psd_flexible (1P units)
+
 plt.rcParams.update({
     "font.size": FONT_SIZE,
     "axes.titlesize": FONT_SIZE,
@@ -27,562 +34,6 @@ plt.rcParams.update({
     "axes.ymargin": 0.1
 })
 
-def plot_1_value(azimuth, value, label, y_unit, save_name, shear_exp, dyn_wake=True, dyn_stall=True, tower_effects=True, turb=True, show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-
-    plt.figure(figsize=(24,14))
-    plt.plot(azimuth, value, label=label)
-    plt.xlabel("Azimuth [deg]")
-    plt.ylabel(f"{y_unit}")
-    plt.legend()
-    # save figure to plots folder with name save_name
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-def plot_1_value_time(time, value, label, y_unit, save_name, shear_exp, dyn_wake=True, dyn_stall=True, tower_effects=True, turb=True, show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-
-    plt.figure(figsize=(24,14))
-    plt.plot(time, value, label=label)
-    # create vertical lines at t=100s and t=150s
-    plt.axvline(x=100, color='gray', linestyle='--', label='t=100s')
-    plt.axvline(x=150, color='red', linestyle='--', label='t=150s')
-    plt.xlabel("Time [s]")
-    plt.ylabel(f"{y_unit}")
-    plt.xlim(50, 250)
-    plt.ylim(1,1.5)
-    plt.legend()
-    # save figure to plots folder with name save_name
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-def plot_1_value_time_2subplots(time,
-                                 value_1, value_2,
-                                 label_1, label_2,
-                                 y_unit_1, y_unit_2,
-                                 save_name, shear_exp,
-                                 dyn_wake=True, dyn_stall=True, tower_effects=True, turb=True, show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(32, 18), sharex=True)
-
-    ax1.plot(time, value_1, label=label_1)
-    # ax1.axvline(x=100, color='gray', linestyle='--', label='t=100s')
-    # ax1.axvline(x=150, color='red', linestyle='--', label='t=150s')
-    ax1.set_ylabel(f"{y_unit_1}")
-    # ax1.set_xlim(50, 250)
-    # ax1.set_ylim(-0.27, -0.33)
-    ax1.legend()
-
-    ax2.plot(time, value_2, label=label_2)
-    # ax2.axvline(x=100, color='gray', linestyle='--', label='t=100s')
-    # ax2.axvline(x=150, color='red', linestyle='--', label='t=150s')
-    ax2.set_ylabel(f"{y_unit_2}")
-    ax2.set_xlabel("Time [s]")
-    # ax2.set_xlim(50, 250)
-    # ax2.set_ylim(-2.3, -3)
-    ax2.legend()
-
-    plt.tight_layout()
-
-    if not turb:
-        save_name += '_no_turbulence'
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-
-
-def plot_2_values(azimuth, value_1, value_2, label_1, label_2, y_unit, save_name, shear_exp, dyn_wake=True, dyn_stall=True, tower_effects=True, turb=True, show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-    # make the size fit a 16:9 aspect ratio
-    plt.figure(figsize=(24,14))
-    plt.plot(azimuth, value_1, label=label_1)
-    plt.plot(azimuth, value_2, label=label_2)
-    plt.ylim(0.25, 1.05)
-    plt.xlabel("Azimuth [deg]")
-    plt.ylabel(f"{y_unit}")
-    plt.legend()
-    # save figure to plots folder with name save_name
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-
-def plot_2_values_time(time, value_1, value_2, label_1, label_2, y_unit, save_name, shear_exp, dyn_wake=True, dyn_stall=True, tower_effects=True, turb=True, show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-    # make the size fit a 16:9 aspect ratio
-    plt.figure(figsize=(24,14))
-    plt.plot(time, value_1, label=label_1)
-    plt.plot(time, value_2, label=label_2)
-    # plt.ylim(0.25, 1.05)
-    plt.xlabel("Time [s]")
-    plt.ylabel(f"{y_unit}")
-    plt.legend()
-    # save figure to plots folder with name save_name
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-def plot_6_subplots_time(time,
-                  value_1, value_2, value_3,
-                  value_4, value_5, value_6,
-                  label_1, label_2, label_3,
-                  label_4, label_5, label_6,
-                  y_unit_1, y_unit_2, y_unit_3,
-                  y_unit_4, y_unit_5, y_unit_6,
-                  save_name, shear_exp,
-                  ylim_1=None, ylim_2=None, ylim_3=None,
-                  ylim_4=None, ylim_5=None, ylim_6=None,
-                  dyn_wake=True, dyn_stall=True, tower_effects=True, turb=True, show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-    if not turb:
-        save_name += "_no_turbulence"
-
-    fig, axes = plt.subplots(6, 1, figsize=(36, 64), sharex=True)
-    ax1, ax2, ax3, ax4, ax5, ax6 = axes
-
-    values  = [value_1,  value_2,  value_3,  value_4,  value_5,  value_6]
-    labels  = [label_1,  label_2,  label_3,  label_4,  label_5,  label_6]
-    y_units = [y_unit_1, y_unit_2, y_unit_3, y_unit_4, y_unit_5, y_unit_6]
-    ylims   = [ylim_1,   ylim_2,   ylim_3,   ylim_4,   ylim_5,   ylim_6]
-
-    for ax, value, label, y_unit, ylim in zip(axes, values, labels, y_units, ylims):
-        ax.plot(time, value, label=label)
-        ax.axvline(x=100, color='gray', linestyle='--', label='t=100s')
-        ax.axvline(x=150, color='red',  linestyle='--', label='t=150s')
-        ax.set_ylabel(f"{y_unit}")
-        ax.set_xlim(50, 250)
-        if ylim is not None:
-            ax.set_ylim(ylim[0], ylim[1])
-        ax.legend()
-
-    axes[-1].set_xlabel("Time [s]")
-    plt.tight_layout()
-
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    if not turb:
-        save_name += '_no_turbulence'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-
-
-def plot_3_values(azimuth,
-                  value_1, value_2, value_3,
-                  label_1, label_2, label_3,
-                  y_unit, save_name,
-                  shear_exp,
-                  dyn_wake=True,
-                  dyn_stall=True,
-                  tower_effects=True,
-                  turb=True,
-                  show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-    if not turb:
-        save_name += "_no_turbulence"   
-    # make the size fit a 16:9 aspect ratio
-    plt.figure(figsize=(24,14))
-    plt.plot(azimuth, value_1, label=label_1)
-    plt.plot(azimuth, value_2, label=label_2)
-    plt.plot(azimuth, value_3, label=label_3)
-    plt.xlabel("Azimuth [deg]")
-    plt.ylabel(f"{y_unit}")
-    plt.legend()
-    # save figure to plots folder with name save_name
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-def plot_4_values(azimuth,
-                  value_1, value_2, value_3, value_4,
-                  label_1, label_2, label_3, label_4,
-                  y_unit, save_name,
-                  shear_exp,
-                  dyn_wake=True,
-                  dyn_stall=True,
-                  tower_effects=True,
-                  turb=True,
-                  show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-    if not turb:
-        save_name += "_no_turbulence"
-    # make the size fit a 16:9 aspect ratio
-    plt.figure(figsize=(24,14))
-    plt.plot(azimuth, value_1, label=label_1)
-    plt.plot(azimuth, value_2, label=label_2)
-    plt.plot(azimuth, value_3, label=label_3)
-    plt.plot(azimuth, value_4, label=label_4)
-    plt.xlabel("Azimuth [deg]")
-    plt.ylabel(f"{y_unit}")
-    plt.legend()
-    # save figure to plots folder with name save_name
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-def plot_4_values_2subplots(azimuth,
-                             value_1, value_2, value_3, value_4,
-                             value_5, value_6, value_7, value_8,
-                             label_1, label_2, label_3, label_4,
-                             label_5, label_6, label_7, label_8,
-                             y_unit_1, y_unit_2, save_name,
-                             shear_exp,
-                             dyn_wake=True,
-                             dyn_stall=True,
-                             tower_effects=True,
-                             turb=True, 
-                             show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-    if not turb:
-        save_name += "_no_turbulence"
-
-    # make the size fit a 16:9 aspect ratio with 2 stacked subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(24, 14), sharex=True)
-
-    ax1.plot(azimuth, value_1, label=label_1)
-    ax1.plot(azimuth, value_2, label=label_2)
-    ax1.plot(azimuth, value_3, label=label_3)
-    ax1.plot(azimuth, value_4, label=label_4)
-    ax1.set_ylabel(f"{y_unit_1}")
-    ax1.legend()
-
-    ax2.plot(azimuth, value_5, label=label_5)
-    ax2.plot(azimuth, value_6, label=label_6)
-    ax2.plot(azimuth, value_7, label=label_7)
-    ax2.plot(azimuth, value_8, label=label_8)
-    ax2.set_ylabel(f"{y_unit_2}")
-    ax2.set_xlabel("Azimuth [deg]")
-    ax2.legend()
-
-    plt.tight_layout()
-
-    # save figure to plots folder with name save_name
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-def plot_4_values_2subplots_time(time,
-                             value_1, value_2, value_3, value_4,
-                             value_5, value_6, value_7, value_8,
-                             label_1, label_2, label_3, label_4,
-                             label_5, label_6, label_7, label_8,
-                             y_unit_1, y_unit_2, save_name,
-                             shear_exp,
-                             dyn_wake=True,
-                             dyn_stall=True,
-                             tower_effects=True,
-                             show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-
-    # make the size fit a 16:9 aspect ratio with 2 stacked subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(24, 14), sharex=True)
-
-    ax1.plot(time, value_1, label=label_1)
-    ax1.plot(time, value_2, label=label_2)
-    ax1.plot(time, value_3, label=label_3)
-    ax1.plot(time, value_4, label=label_4)
-    ax1.set_ylabel(f"{y_unit_1}")
-    ax1.legend()
-
-    ax2.plot(time, value_5, label=label_5)
-    ax2.plot(time, value_6, label=label_6)
-    ax2.plot(time, value_7, label=label_7)
-    ax2.plot(time, value_8, label=label_8)
-    ax2.set_ylabel(f"{y_unit_2}")
-    ax2.set_xlabel("Time [s]")
-    ax2.legend()
-
-    plt.tight_layout()
-
-    # save figure to plots folder with name save_name
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-
-def plot_2_values_blade_span(span_positions, value_1, value_2, label_1, label_2, y_unit, save_name, shear_exp, dyn_wake=True, dyn_stall=True, tower_effects=True, show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-    # make the size fit a 16:9 aspect ratio
-    plt.figure(figsize=(24,14))
-    plt.plot(span_positions, value_1, label=label_1)
-    plt.plot(span_positions, value_2, label=label_2)
-    plt.xlabel("Blade span position [m]")
-    plt.ylabel(f"{y_unit}")
-    plt.legend()
-    # save figure to plots folder with name save_name
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-
-
-
-def plot_2_values_blade_span_subplots(span_positions, value_1, value_2, value_3, value_4, label_1, label_2, label_3, label_4, y_unit_1, y_unit_2, save_name, shear_exp, dyn_wake=True, dyn_stall=True, tower_effects=True, show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-
-    # make the size fit a 16:9 aspect ratio with 2 stacked subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(24, 14), sharex=True)
-
-    ax1.plot(span_positions, value_1, label=label_1, linewidth = 6)
-    ax1.plot(span_positions, value_2, label=label_2, linewidth = 6)
-    ax1.set_ylabel(f"{y_unit_1}")
-    ax1.legend()
-
-    ax2.plot(span_positions, value_3, label=label_3, linewidth = 6)
-    ax2.plot(span_positions, value_4, label=label_4, linewidth = 6)
-    ax2.set_ylabel(f"{y_unit_2}")
-    ax2.set_xlabel("Blade span position [m]")
-    ax2.legend()
-
-    plt.tight_layout()
-
-    # save figure to plots folder with name save_name
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-
-
-
-
-def plot_3_subplots(azimuth,
-                  value_1, value_2, value_3,
-                  label_1, label_2, label_3,
-                  y_unit, save_name,
-                  shear_exp,
-                  dyn_wake=True,
-                  dyn_stall=True,
-                  tower_effects=True,
-                  show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-    # make the size fit a 16:9 aspect ratio
-    plt.figure(figsize=(24,14))
-    plt.plot(azimuth, value_1, label=label_1)
-    plt.plot(azimuth, value_2, label=label_2)
-    plt.plot(azimuth, value_3, label=label_3)
-    plt.xlabel("Azimuth [deg]")
-    plt.ylabel(f"{y_unit}")
-    plt.legend()
-    # save figure to plots folder with name save_name
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-
-        plt.show()
-
-
-def plot_3_subplots_time(time,
-                         
-                  value_1, value_2, value_3,
-                  label_1, label_2, label_3,
-                  y_unit, save_name,
-                  shear_exp,
-                  dyn_wake=True,
-                  dyn_stall=True,
-                  tower_effects=True,
-                  show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-    # make the size fit a 16:9 aspect ratio
-    plt.figure(figsize=(24,14))
-    plt.plot(time, value_1, label=label_1)
-    plt.plot(time, value_2, label=label_2)
-    plt.plot(time, value_3, label=label_3)
-    plt.xlabel("Time [s]")
-    plt.ylabel(f"{y_unit}")
-    plt.legend()
-    # save figure to plots folder with name save_name
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-def plot_3_subplots_time_2subplots(time,
-                                   
-                  value_1, value_2, value_3,
-                  value_4, value_5, value_6,
-                  label_1, label_2, label_3,
-                  label_4, label_5, label_6,
-                  y_unit_1, y_unit_2, save_name,
-                  shear_exp,
-                  dyn_wake=True,
-                  dyn_stall=True,
-                  tower_effects=True,
-                  show_plot=False):
-
-    # create folder if it doesn't exist
-    save_path = Path("plots")
-    save_path.mkdir(exist_ok=True)
-    save_name += f"_shear_{shear_exp}"
-    if not tower_effects:
-        save_name += "_no_tower_effects"
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(24, 14), sharex=True)
-
-    ax1.plot(time, value_1, label=label_1)
-    ax1.plot(time, value_2, label=label_2)
-    ax1.plot(time, value_3, label=label_3)
-    ax1.set_ylabel(f"{y_unit_1}")
-    ax1.legend()
-
-    ax2.plot(time, value_4, label=label_4)
-    ax2.plot(time, value_5, label=label_5)
-    ax2.plot(time, value_6, label=label_6)
-    ax2.set_ylabel(f"{y_unit_2}")
-    ax2.set_xlabel("Time [s]")
-    ax2.legend()
-
-    plt.tight_layout()
-
-    if not dyn_wake:
-        save_name += '_no_dyn_wake'
-    if not dyn_stall:
-        save_name += '_no_dyn_stall'
-    plt.savefig(save_path / f"{save_name}.png")
-    if show_plot:
-        plt.show()
-
-
 def plot_flexible(
     x_val: np.ndarray,
     y_values: list,
@@ -590,16 +41,262 @@ def plot_flexible(
     x_label: str,
     y_units: list,
     save_name: str,
-    shear_exp = float,
+    shear_exp: float = 0.2,
     ylims=None,
     xlims=None,
-    fig_size = 32,
-    vlines=None,          # e.g. [{"x": 100, "color": "gray", "linestyle": "--", "label": "t=100s"}, ...]
+    fig_size=32,
+    vlines=None,
+    hlines=None,
     dyn_wake=True,
     dyn_stall=True,
     tower=True,
     turb=0,
-    show_plot=False):
+    show_plot=False,
+    x_major_nbins: int = X_MAJOR_NBINS,
+    y_major_nbins: int = Y_MAJOR_NBINS,
+    x_minor_subdiv: int = X_MINOR_SUBDIV,
+    y_minor_subdiv: int = Y_MINOR_SUBDIV,
+):
+    """
+    Flexible multi-subplot plotting function with support for multiple lines per subplot.
+    
+    Parameters:
+    -----------
+    x_val : np.ndarray
+        1D array of x values (shared across all subplots)
+    y_values : list of lists
+        y data. Each inner list represents one subplot.
+    labels : list of lists
+        Labels for each line. Structure matches y_values.
+    x_label : str
+        Label for x-axis
+    y_units : list
+        Y-axis labels, one per subplot
+    save_name : str
+        Base filename for saving (without extension)
+    shear_exp : float
+        Shear exponent for filename
+    ylims : list of tuples, optional
+        Y-axis limits [(min, max), ...] per subplot
+    xlims : tuple, optional
+        X-axis limits (min, max)
+    fig_size : int
+        Figure width in inches
+    vlines : list of lists, optional
+        Vertical lines per subplot. Each item: (x_val, label) or (x_val, label, style_dict)
+    hlines : list of lists, optional
+        Horizontal lines per subplot. Each item: (y_val, label) or (y_val, label, style_dict)
+    dyn_wake, dyn_stall, tower, turb : bool
+        Feature flags for filename
+    show_plot : bool
+        Whether to display plot
+    x_major_nbins, y_major_nbins : int
+        Number of major ticks
+    x_minor_subdiv, y_minor_subdiv : int
+        Minor tick subdivisions
+    """
+    
+    # Ensure x_val is 1D numpy array
+    x_val = np.asarray(x_val).flatten()
+    
+    subplots = len(y_values)
+    
+    # --- auto-wrap flat lists into nested lists ---
+    if not isinstance(y_values[0], (list, np.ndarray)):
+        y_values = [[y] for y in y_values]
+    
+    if not isinstance(labels[0], list):
+        labels = [[l] for l in labels]
+    
+    # --- validate inputs ---
+    assert len(y_values) == subplots, "y_values must have one list per subplot"
+    assert len(labels) == subplots, "labels must have one list per subplot"
+    assert len(y_units) == subplots, "y_units must have one entry per subplot"
+    
+    if ylims is None:
+        ylims = [None] * subplots
+    assert len(ylims) == subplots, "ylims must have one entry per subplot"
+    
+    # --- normalize hlines to per-subplot list ---
+    def _normalize_lines(lines_in, n_subplots):
+        """Normalize vlines/hlines to per-subplot format."""
+        if lines_in is None:
+            return [[] for _ in range(n_subplots)]
+        
+        if isinstance(lines_in, (int, float, np.floating, dict)):
+            return [[lines_in] for _ in range(n_subplots)]
+        
+        if isinstance(lines_in, (list, tuple, np.ndarray)):
+            if len(lines_in) == n_subplots:
+                out = []
+                for item in lines_in:
+                    if item is None:
+                        out.append([])
+                    elif isinstance(item, (int, float, np.floating, dict, tuple, list)):
+                        out.append([item] if not isinstance(item, list) else item)
+                    else:
+                        raise TypeError(f"Unsupported line item type: {type(item)}")
+                return out
+            else:
+                return [list(lines_in) for _ in range(n_subplots)]
+        
+        raise TypeError(f"Unsupported lines type: {type(lines_in)}")
+    
+    hlines_per_subplot = _normalize_lines(hlines, subplots)
+    vlines_per_subplot = _normalize_lines(vlines, subplots)
+    
+    # --- create output folder ---
+    save_path = Path("plots")
+    save_path.mkdir(exist_ok=True)
+    
+    # --- build save name ---
+    shear_exp_string = f"{shear_exp:.2f}".replace(".", "p")
+    save_name += f"_shear_{shear_exp_string}"
+    if not tower:
+        save_name += "_no_tower"
+    if not dyn_wake:
+        save_name += "_no_dyn_wake"
+    if not dyn_stall:
+        save_name += "_no_dyn_stall"
+    save_name += f"_turb_{turb}"
+    
+    # --- create figure ---
+    fig, axes = plt.subplots(subplots, 1, figsize=(fig_size, 9 * subplots), sharex=True)
+    if subplots == 1:
+        axes = [axes]
+    
+    # --- plot data ---
+    for ax, y_list, label_list, y_unit, ylim, h_lines, v_lines in zip(
+        axes, y_values, labels, y_units, ylims, hlines_per_subplot, vlines_per_subplot
+    ):
+        # Plot y data
+        for i, (y, label) in enumerate(zip(y_list, label_list)):
+            ax.plot(
+                x_val, y,
+                label=label,
+                linewidth=LINE_WIDTH,
+                linestyle=LINE_STYLES[i % len(LINE_STYLES)],
+            )
+        
+        # Add vertical lines
+        for vline in v_lines:
+            if isinstance(vline, dict):
+                ax.axvline(
+                    x=vline["x"],
+                    color=vline.get("color", "gray"),
+                    linestyle=vline.get("linestyle", "--"),
+                    linewidth=vline.get("linewidth", LINE_WIDTH),
+                    alpha=vline.get("alpha", 1.0),
+                    label=vline.get("label", None),
+                )
+            elif isinstance(vline, (tuple, list)):
+                if len(vline) == 2:
+                    x_v, label_v, style = vline[0], vline[1], {}
+                elif len(vline) == 3 and isinstance(vline[2], dict):
+                    x_v, label_v, style = vline
+                else:
+                    raise ValueError("vline must be (x, label) or (x, label, style_dict)")
+                
+                ax.axvline(
+                    x=float(x_v),
+                    color=style.get("color", "gray"),
+                    linestyle=style.get("linestyle", "--"),
+                    linewidth=style.get("linewidth", LINE_WIDTH),
+                    alpha=style.get("alpha", 1.0),
+                    label=label_v,
+                )
+        
+        # Add horizontal lines
+        for hline in h_lines:
+            if isinstance(hline, dict):
+                y_h = hline.get("y", hline.get("value"))
+                if y_h is None:
+                    raise ValueError("hline dict must contain 'y' or 'value'")
+                ax.axhline(
+                    y=float(y_h),
+                    color=hline.get("color", "gray"),
+                    linestyle=hline.get("linestyle", "--"),
+                    linewidth=hline.get("linewidth", LINE_WIDTH),
+                    alpha=hline.get("alpha", 1.0),
+                    label=hline.get("label", None),
+                )
+            elif isinstance(hline, (tuple, list)):
+                if len(hline) == 2:
+                    y_h, label_h, style = hline[0], hline[1], {}
+                elif len(hline) == 3 and isinstance(hline[2], dict):
+                    y_h, label_h, style = hline
+                else:
+                    raise ValueError("hline must be (y, label) or (y, label, style_dict)")
+                
+                ax.axhline(
+                    y=float(y_h),
+                    color=style.get("color", "gray"),
+                    linestyle=style.get("linestyle", "--"),
+                    linewidth=style.get("linewidth", LINE_WIDTH),
+                    alpha=style.get("alpha", 1.0),
+                    label=label_h,
+                )
+            else:
+                ax.axhline(
+                    y=float(hline),
+                    color="gray",
+                    linestyle="--",
+                    linewidth=LINE_WIDTH,
+                )
+        
+        # Configure axes
+        ax.set_ylabel(y_unit)
+        ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=x_major_nbins))
+        ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=y_major_nbins))
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator(x_minor_subdiv))
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator(y_minor_subdiv))
+        ax.minorticks_on()
+        ax.grid(True, which="major", alpha=1, linestyle="--")
+        ax.grid(True, which="minor", alpha=0.5, linestyle=":")
+        ax.legend()
+        
+        if ylim is not None:
+            ax.set_ylim(ylim[0], ylim[1])
+    
+    # Set x-axis limits
+    if xlims is not None:
+        axes[0].set_xlim(xlims[0], xlims[1])
+    
+    # Labels and title
+    axes[-1].set_xlabel(x_label)
+    # plt.title(save_name.replace("_", " ").title(), fontsize=FONT_SIZE)
+    plt.tight_layout()
+    
+    # Save and show
+    plt.savefig(save_path / f"{save_name}.png", dpi=150, bbox_inches="tight")
+    if show_plot:
+        plt.show()
+    plt.close()
+
+
+def plot_flexible_old(
+    x_val: np.ndarray = None,
+    y_values: list = None,
+    labels: list = None,
+    x_label: str = None,
+    y_units: list = None,
+    save_name: str = None,
+    shear_exp: float = 0.2,
+    ylims=None,
+    xlims=None,
+    fig_size = 32,
+    vlines=None,          # e.g. [{"x": 100, "color": "gray", "linestyle": "--", "label": "t=100s"}, ...]
+    hlines=None,
+    dyn_wake=True,
+    dyn_stall=True,
+    tower=True,
+    turb=0,
+    show_plot=False,
+    x_major_nbins: int = X_MAJOR_NBINS,      # NEW
+    y_major_nbins: int = Y_MAJOR_NBINS,      # NEW
+    x_minor_subdiv: int = X_MINOR_SUBDIV,    # NEW
+    y_minor_subdiv: int = Y_MINOR_SUBDIV     # NEW
+):
     """
     Plotting function that can handle multiple subplots and multiple lines per subplot, with flexible input formats.
 
@@ -614,6 +311,7 @@ def plot_flexible(
     - ylims: list of (min, max) tuples for y axis limits, one per subplot
     - xlims: list of (min, max) tuples for x axis limits, one per subplot
     - vlines: list of dictionaries for vertical lines
+    - hlines: list of dictionaries for horizontal lines
         # e.g. [{"x": 100, "color": "gray", "linestyle": "--", "label": "t=100s"}, ...]
     - dyn_wake, dyn_stall, tower, turb: booleans to control which features are included in the save name
     - dyn_stall: whether to include dynamic stall effects in the save name
@@ -648,12 +346,44 @@ def plot_flexible(
     assert len(ylims) == subplots, "ylims must have one entry per subplot (or None)"
     assert len(values_per_subplot) == subplots, "values_per_subplot must match number of subplots"
 
+        # --- normalize hlines to per-subplot list ---
+    def _normalize_hlines(hlines_in, n_subplots):
+        if hlines_in is None:
+            return [[] for _ in range(n_subplots)]
+
+        # single spec (number or dict) -> apply to all subplots
+        if isinstance(hlines_in, (int, float, np.floating, dict)):
+            return [[hlines_in] for _ in range(n_subplots)]
+
+        if isinstance(hlines_in, (list, tuple, np.ndarray)):
+            # per-subplot form
+            if len(hlines_in) == n_subplots:
+                out = []
+                for item in hlines_in:
+                    if item is None:
+                        out.append([])
+                    elif isinstance(item, (int, float, np.floating, dict)):
+                        out.append([item])
+                    elif isinstance(item, (list, tuple, np.ndarray)):
+                        out.append(list(item))
+                    else:
+                        raise TypeError(f"Unsupported hlines item type: {type(item)}")
+                return out
+
+            # global list form -> apply same lines to all subplots
+            return [list(hlines_in) for _ in range(n_subplots)]
+
+        raise TypeError(f"Unsupported hlines type: {type(hlines_in)}")
+
+    hlines_per_subplot = _normalize_hlines(hlines, subplots)
+
     # --- create folder ---
     save_path = Path("plots")
     save_path.mkdir(exist_ok=True)
 
     # --- build save name ---
-    save_name += f"_shear_{shear_exp}"
+    shear_exp_string = f"{shear_exp:.2f}".replace(".", "p")
+    save_name += f"_shear_{shear_exp_string}"
     if not tower:
         save_name += "_no_tower"
     if not dyn_wake:
@@ -663,31 +393,104 @@ def plot_flexible(
     save_name += f"_turb_{turb}"
 
     # --- plot ---
+    # --- plot ---
     fig, axes = plt.subplots(subplots, 1, figsize=(fig_size, 9 * subplots), sharex=True)
     if subplots == 1:
         axes = [axes]
 
-    for ax, y_list, label_list, y_unit, ylim in zip(axes, y_values, labels, y_units, ylims):
+    for ax, y_list, label_list, y_unit, ylim, subplot_hlines in zip(
+        axes, y_values, labels, y_units, ylims, hlines_per_subplot
+    ):
         for i, (y, label) in enumerate(zip(y_list, label_list)):
             ax.plot(x_val, y, label=label,
                     linewidth=LINE_WIDTH,
                     linestyle=LINE_STYLES[i % len(LINE_STYLES)])
+
         if vlines is not None:
-            for vline in vlines:
-                ax.axvline(
-                    x=vline["x"],
-                    color=vline.get("color", "gray"),
-                    linestyle=vline.get("linestyle", "--"),
-                    linewidth=vline.get("linewidth", LINE_WIDTH),
-                    alpha=vline.get("alpha", 1.0),
-                    label=vline.get("label", None),
+            for vline_list in vlines:
+                for vline in vline_list:
+                    # dict form
+                    if isinstance(vline, dict):
+                        ax.axvline(
+                            x=vline["x"],
+                            color=vline.get("color", "gray"),
+                            linestyle=vline.get("linestyle", "--"),
+                            linewidth=vline.get("linewidth", LINE_WIDTH),
+                            alpha=vline.get("alpha", 1.0),
+                            label=vline.get("label", None),
+                        )
+                    # tuple/list form: (x, label) or (x, label, style_dict)
+                    elif isinstance(vline, (tuple, list)):
+                        if len(vline) == 2:
+                            x_val, label = vline
+                            style = {}
+                        elif len(vline) == 3 and isinstance(vline[2], dict):
+                            x_val, label, style = vline
+                        else:
+                            raise ValueError("Tuple/list vline must be (x, label) or (x, label, style_dict).")
+                        
+                        ax.axvline(
+                            x=float(x_val),
+                            color=style.get("color", "gray"),
+                            linestyle=style.get("linestyle", "--"),
+                            linewidth=style.get("linewidth", LINE_WIDTH),
+                            alpha=style.get("alpha", 1.0),
+                            label=label,
+                        )
+
+
+        # --- NEW: horizontal lines (per subplot) ---
+        for hline in subplot_hlines:
+            # dict form: {"y": ..., "label": ..., "color": ...}
+            if isinstance(hline, dict):
+                y_val = hline.get("y", hline.get("value", None))
+                if y_val is None:
+                    raise ValueError("Each hline dict must contain 'y' (or 'value').")
+                ax.axhline(
+                    y=float(y_val),
+                    color=hline.get("color", "gray"),
+                    linestyle=hline.get("linestyle", "--"),
+                    linewidth=hline.get("linewidth", LINE_WIDTH),
+                    alpha=hline.get("alpha", 1.0),
+                    label=hline.get("label", None),
                 )
+
+            # tuple/list form: (y, label) or (y, label, style_dict)
+            elif isinstance(hline, (tuple, list)):
+                if len(hline) == 2:
+                    y_val, label = hline
+                    style = {}
+                elif len(hline) == 3 and isinstance(hline[2], dict):
+                    y_val, label, style = hline
+                else:
+                    raise ValueError("Tuple/list hline must be (y, label) or (y, label, style_dict).")
+
+                ax.axhline(
+                    y=float(y_val),
+                    color=style.get("color", "gray"),
+                    linestyle=style.get("linestyle", "--"),
+                    linewidth=style.get("linewidth", LINE_WIDTH),
+                    alpha=style.get("alpha", 1.0),
+                    label=label,
+                )
+
+            # scalar form: y only
+            else:
+                ax.axhline(
+                    y=float(hline),
+                    color="gray",
+                    linestyle="--",
+                    linewidth=LINE_WIDTH,
+                    alpha=1.0,
+                )
+
         ax.set_ylabel(y_unit)
         ax.legend()
-        ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=8))
-        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator(2))
-        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator(2))   # <-- ADD THIS
-        ax.minorticks_on()                                        # <-- ADD THIS
+        ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=x_major_nbins))
+        ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=y_major_nbins))
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator(x_minor_subdiv))
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator(y_minor_subdiv))
+        ax.minorticks_on()
         ax.grid(True, which='major', alpha=1, linestyle='--')
         ax.grid(True, which='minor', alpha=0.5, linestyle=':')   # lower alpha for minor
         if ylim is not None:
@@ -722,7 +525,10 @@ def plot_psd_flexible(
     tower=True,
     turb=0,
     vlines=None,          # e.g. [{"x": 1, "color": "red", "linestyle": "--", "label": "1P"}, ...]
-    show_plot=False):
+    show_plot=False,
+    x_major_step: float = PSD_X_MAJOR_STEP,   # NEW
+    x_minor_subdiv: int = X_MINOR_SUBDIV      # NEW
+):
     """
     Plotting function that can handle multiple subplots and multiple lines per subplot, with flexible input formats.
 
@@ -812,7 +618,8 @@ def plot_psd_flexible(
             for n, style in zip([1, 3, 6, 9], ['--', '-.', ':', '-']):
                 ax.axvline(x=n, color='gray', linestyle=style, linewidth=1.5, alpha=0.7)
 
-        ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+        ax.xaxis.set_major_locator(ticker.MultipleLocator(x_major_step))
+        ax.xaxis.set_minor_locator(ticker.AutoMinorLocator(x_minor_subdiv))
         ax.grid(True, which='major', alpha=1, linestyle='--')
         ax.grid(True, which='minor', alpha=1, linestyle=':')
         ax.set_ylabel(y_unit)

@@ -340,7 +340,7 @@ class Blade:
 
     @property
     def get_p(self):
-        return self._p
+        return self.p
     
     @property
     def thrust(self):

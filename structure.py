@@ -103,6 +103,13 @@ class Structure(ABC):
         self.max_downstream_azi = self._max_downstream_azimuth(self._yaw, self._tilt)
         self.rotor_normal = self._rotor_normal(self.yaw, self.tilt)
 
+        self.tower_radius = np.asarray([
+            [0, bot_thickness],
+            [hub_height, top_thickness],
+            ]
+        )
+
+
     @abstractmethod
     def step(self, simulation):
         pass
@@ -262,7 +269,23 @@ class RigidStructure(Structure):
         drive_train_dynamics : bool, optional
             Whether or not to include drive train dynamics, by default False
         """
-        super().__init__(omega_init, file_blade, hub_height, bot_thickness, top_thickness, l_shaft, cone, yaw, tilt, pitch_init)
+        self.tower_radius = np.asarray([
+            [0, bot_thickness],
+            [hub_height, top_thickness],
+            ]
+        )
+        super().__init__(
+            omega_init=omega_init,
+            file_blade=file_blade,
+            hub_height=hub_height,
+            bot_thickness=bot_thickness,
+            top_thickness=top_thickness,
+            l_shaft=l_shaft,
+            cone=cone,
+            yaw=yaw,
+            tilt=tilt,
+            pitch_init=pitch_init,
+        )
 
         self.drive_train_dynamics = drive_train_dynamics
 

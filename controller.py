@@ -10,8 +10,18 @@ class NoController:
 class Controller:
     """Controller"""
 
-    def __init__(self, tsr: float,
-                 cp_max: float, 
+    @classmethod
+    def create(cls, use_controller: bool = True, **kwargs):
+        """
+        Factory: returns Controller or NoController.
+        Keeps main script free of if/else controller wiring.
+        """
+        if use_controller:
+            return cls(use_controller=True, **kwargs)
+        return NoController()
+
+    def __init__(self, tsr: float = 8.0,
+                 cp_max: float = 0.466, 
                  rated_power: float = 10.64e6, 
                  omega_rated: float = 9.6*np.pi/30, 
                  ref_scale: float = 1.02, 
@@ -65,7 +75,7 @@ class Controller:
         self.pitch_i_prev = 0
         self.tsr = tsr
         self.cp_max = cp_max
-
+        
     def simulation_init(self, simulation):
         """Initialize the controller with the simulation instance."""
 
@@ -76,50 +86,69 @@ class Controller:
         self.k_opt = 1/2 * rho * (R / self.tsr)**3 * A * self.cp_max
 
         self.torque_gen = self.torque_gen_func(simulation)
+        
+        # parameter for 2nd order filter
+        self.pitch_prev = simulation.structure.pitch[0] # Assuming all blades have the same pitch angle, we can just take the pitch of the first blade.
+
 
     
     def step(self, simulation):
-        if self.use_controller == True:
-            omega = simulation.structure.omega_shaft
-            omega_ref = self.omega_ref
-            inertia_rotor = simulation.structure.inertia_rotor
-            aero_torque = simulation.aero.rotor._torque
+        omega = simulation.structure.omega_shaft
+        omega_ref = self.omega_ref
+        inertia_rotor = simulation.structure.inertia_rotor
+        aero_torque = simulation.aero.rotor._torque
 
-            pitch_min = self.pitch_min
-            pitch_max = self.pitch_max
+        pitch_min = self.pitch_min
+        pitch_max = self.pitch_max
 
-            pitch = simulation.structure.pitch[0] # Assuming all blades have the same pitch angle, we can just take the pitch of the first blade.
+        pitch = simulation.structure.pitch[0] # Assuming all blades have the same pitch angle, we can just take the pitch of the first blade.
 
-            # compute the GK
-            self.gk = 1 / (1+(pitch / self.kk))
+        # compute the GK
+        self.gk = 1 / (1+(pitch / self.kk))
 
-            # compute proportional term
-            pitch_p = np.rad2deg(self.gk * self.k_p * (omega - omega_ref))
+        # compute proportional term
+        pitch_p = np.rad2deg(self.gk * self.k_p * (omega - omega_ref))
 
-            # compute integral term
+        # compute integral term
 
-            self.pitch_i = np.rad2deg(self.pitch_i_prev + self.gk * self.k_i * (omega - omega_ref) * simulation.dt)
+        self.pitch_i = np.rad2deg(self.pitch_i_prev + self.gk * self.k_i * (omega - omega_ref) * simulation.dt)
 
-            # limit integral term between min and max pitch
-            self.pitch_i = np.clip(self.pitch_i, pitch_min, pitch_max)
+        # limit integral term between min and max pitch
+        self.pitch_i = np.clip(self.pitch_i, pitch_min, pitch_max)
 
-            # compute setpoint
-            pitch_sp = pitch_p + self.pitch_i
-            # pitch_sp = pitch_p 
+        # compute setpoint
+        pitch_sp = pitch_p + self.pitch_i
+        # pitch_sp = pitch_p 
 
-            # limit setpoint between min and max pitch
-            pitch_sp = np.clip(pitch_sp, pitch_min, pitch_max)
-            
-            # update the pitch of the structure
-            # broadcast scalar setpoint to all blades
-            simulation.structure.pitch[:] = [pitch_sp] * len(simulation.structure.pitch)
+        # limit setpoint between min and max pitch
+        pitch_sp = np.clip(pitch_sp, pitch_min, pitch_max)
+        
+        # add pitch actuator dynamics (2nd order filter)
+        omega0 = 8.0
+        zeta = 0.7
+        dt = simulation.dt
+        
+        pitch_current = pitch
+        pitch_new = (
+            omega0**2 * dt**2 * pitch_sp
+            + (2- omega0**2 * dt**2) * pitch_current
+            + (zeta * omega0 * dt - 1) * self.pitch_prev 
+        ) / (1 + zeta * omega0 * dt)
+        
+        pitch_new = np.clip(pitch_new, pitch_min, pitch_max)
+        
+        self.pitch_prev = pitch_current
+        
+        # update the pitch of the structure
+        # broadcast scalar setpoint to all blades
+        simulation.structure.pitch[:] = [pitch_new] * len(simulation.structure.pitch)
 
-            # update the rotational speed
-            self.torque_gen = self.torque_gen_func(simulation)
+        # update the rotational speed
+        self.torque_gen = self.torque_gen_func(simulation)
 
-            simulation.structure.omega_shaft = omega + (aero_torque - self.torque_gen) / inertia_rotor * simulation.dt
+        simulation.structure.omega_shaft = omega + (aero_torque - self.torque_gen) / inertia_rotor * simulation.dt
 
-            self.pitch_i_prev = np.radians(self.pitch_i)
+        self.pitch_i_prev = np.radians(self.pitch_i)
 
     
     def torque_gen_func(self, simulation):

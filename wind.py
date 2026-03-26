@@ -75,6 +75,8 @@ class ShearWind(Wind):
             The exponent of for the shear.
         """
         self.shear = lambda x: v_ref * (x / x_ref) ** exponent
+        self.shear_exp = exponent
+        self.hub_height = x_ref  # <-- required by v_hub_mean
 
     def __call__(self, xyz):
         xyz = np.atleast_2d(xyz)
@@ -91,7 +93,6 @@ class ShearWind(Wind):
     @property
     def v_hub_mean(self) -> float:
         return self.shear(self.hub_height)
-
 
 class WindWithTower(Wind):
 
@@ -336,3 +337,58 @@ class TurbWind(Wind):
     @property
     def v_hub_mean(self) -> float:
         return self.surrounding_wind.v_hub_mean
+
+
+class ConfiguredWind(Wind):
+    """
+    Builds a wind model from simple inputs:
+    - shear exponent
+    - hub height
+    - hub wind speed
+    - optional tower radius profile
+    - turbulence intensity
+    """
+    def __init__(
+        self,
+        hub_height: float,
+        v_hub: float,
+        shear_exp: float = 0.0,
+        tower_radius: np.ndarray | None = None,
+        TI: float = 0.0,
+        y_tower: float = 0.0,
+        z_tower: float = 0.0,
+    ) -> None:
+        if shear_exp != 0:
+            #    def __init__(self, x_ref: float, v_ref: float, exponent: float, hub_height: float) -> None:
+
+            wind: Wind = ShearWind(hub_height, v_hub, shear_exp)
+        else:
+            wind = ConstantWind(v_hub)
+
+        if tower_radius is not None:
+            wind = WindWithTower(
+                y_tower=y_tower,
+                z_tower=z_tower,
+                xa=tower_radius,
+                surrounding_wind=wind,
+            )
+
+        if TI > 0:
+            wind = TurbWind(wind, TI)
+
+        self._wind = wind
+
+    def simulation_init(self, simulation):
+        if hasattr(self._wind, "simulation_init"):
+            self._wind.simulation_init(simulation)
+
+    def __call__(self, xyz):
+        return self._wind(xyz)
+
+    def step(self, simulation) -> None:
+        self._wind.step(simulation)
+
+    @property
+    def v_hub_mean(self) -> float:
+        return self._wind.v_hub_mean
+
