@@ -150,49 +150,75 @@ class WindWithTower(Wind):
 
 class TurbWind(Wind):
 
-    def __init__(self, surrounding_wind: Wind, TI = 0.1) -> None:
+    def __init__(self, surrounding_wind: Wind, TI = 0.1, T: float = 500) -> None:
         
         self.surrounding_wind = surrounding_wind
         self.TI = TI
+        self.T = T
         u_mean = self.surrounding_wind.v_hub_mean
 
-        # Define discretization of the Mann box
-        self.n1=4096
-        self.n2=32
-        self.n3=32
-
         # Define the size of the box
-        self.Lx = 6142.5
-        Ly = 180
-        Lz = 180
+        # self.Lx = 6142.5
+        # self.Lx = u_mean * self.T + 500  # box length in x direction is set to the distance the wind travels in time T, so that the box advects through the rotor plane during the simulation
+        self.Lx = 25 * self.T + 500 # 25 test value
+        Ly = 185 # make sure its larger than the rotor diameter(89*2=178m) to capture the full rotor in the turbulence box
+        Lz = 185
+        
+        # Define discretization of the Mann box based on the size of the box and the desired resolution. 
+        # lx=6142.5, nx = 4096 gives 1.5m spacing (nxyz must be square numbers)
+        # self.nx=4096
+        
+        def next_square(n):
+            return int(np.ceil(np.sqrt(n)) ** 2)
+        
+        self.nx = next_square(self.Lx / 1.5)
+        self.ny = next_square(Ly / 5)
+        self.nz = next_square(Lz / 5)
 
         # Calculate grid spacing
-        self.dy=Ly/(self.n2-1)
-        self.dx=self.Lx/(self.n1-1)
-        self.dz=Lz/(self.n3-1)
+        self.dy=Ly/(self.ny-1)
+        self.dx=self.Lx/(self.nx-1)
+        self.dz=Lz/(self.nz-1)
 
         self.mann_dir = os.path.join(os.path.dirname(__file__), "sim_data", "mann_boxes")
         os.makedirs(self.mann_dir, exist_ok=True)
 
-        # remove decimal point and trailing zeros from u_mean for filename
-        u_s = f"{u_mean:.2f}".rstrip("0").rstrip(".")
-
-        fname = f"mann_box_{TI}_{u_s}.nc"
-        fpath = os.path.join(self.mann_dir, fname)
+        # Generate/load a single reference Mann box (independent of TI and u_mean)
+        fname_ref = "mann_box_reference.nc"
+        fpath_ref = os.path.join(self.mann_dir, fname_ref)
         
-        if not os.path.exists(fpath):
-            print(f"Generating Mann box with TI={TI} and u_mean={u_mean} m/s")
+        if not os.path.exists(fpath_ref):
+            print(f"Generating reference Mann box with Nxyz=({self.nx}, {self.ny}, {self.nz})")
             mann_box = MannTurbulenceField.generate(
-                Nxyz=(self.n1, self.n2, self.n3),
+                Nxyz=(self.nx, self.ny, self.nz),
                 dxyz=(self.dx, self.dy, self.dz),
                 L=33.6, Gamma=3.9
             )
+            mann_box.to_netcdf(filename=fpath_ref)
+            print(f"Reference Mann box saved to {fpath_ref}")
+        else:
+            print(f"Loading reference Mann box from {fpath_ref}")
+
+        # Load the reference box
+        mann_box = MannTurbulenceField.from_netcdf(fpath_ref)
+        
+        # Check if scaled box already exists
+        ti_str = f"{TI:.4f}".rstrip("0").rstrip(".")
+        umean_str = f"{u_mean:.2f}".rstrip("0").rstrip(".")
+        fname_scaled = f"mann_box_scaled_ti{ti_str}_umean{umean_str}.nc"
+        fpath_scaled = os.path.join(self.mann_dir, fname_scaled)
+        
+        if not os.path.exists(fpath_scaled):
+            # Scale it to match the desired TI and wind speed
+            print(f"Scaling Mann box for TI={TI} and v_hub={u_mean} m/s")
             mann_box.scale_TI(TI=self.TI, U=self.surrounding_wind.v_hub_mean)
-            mann_box.to_netcdf(filename = fpath)
+            mann_box.to_netcdf(filename=fpath_scaled)
+            print(f"Scaled Mann box saved to {fpath_scaled}")
+        else:
+            print(f"Loading pre-scaled Mann box from {fpath_scaled}")
+            mann_box = MannTurbulenceField.from_netcdf(fpath_scaled)
 
-        mann_box = MannTurbulenceField.from_netcdf(fpath)  # this one takes the folder path directly
-        print(f"Mann box loaded from file: {fpath}")
-
+        
         # Transform the Mann box to a `DataArray` (from the package `xarray`)
         self.da_mann_box = mann_box.to_xarray()
 
@@ -331,15 +357,13 @@ class TurbWind(Wind):
         # return result
         
     def step(self, simulation) -> None:
-
-        # advect the box at the mean wind speed and update the z coordinates of the box
-        # Pseudocode: box_z_pos += self.surrounding_wind.v_hub_mean * simulation.dt
-        # Shift all z coordinates forward by umean * dt
-        self.z_turb += self.surrounding_wind.v_hub_mean * simulation.dt
-
-        # Update the z coordinates of the box
+        dz_shift = self.surrounding_wind.v_hub_mean * simulation.dt
+        self.z_turb += dz_shift
         self.da_mann_box = self.da_mann_box.assign_coords(z=self.z_turb)
 
+        # keep only lightweight debug print
+        if getattr(self, "debug", False) and (simulation.i_step < 5 or simulation.i_step % 500 == 0):
+            print(f"[TurbWind:step {simulation.i_step}] dz_shift={dz_shift:.3f}")
 
     @property
     def v_hub_mean(self) -> float:
@@ -362,6 +386,7 @@ class ConfiguredWind(Wind):
         shear_exp: float = 0.0,
         tower_radius: np.ndarray | None = None,
         TI: float = 0.0,
+        T: float = 500,
         y_tower: float = 0.0,
         z_tower: float = 0.0,
     ) -> None:
@@ -381,7 +406,7 @@ class ConfiguredWind(Wind):
             )
 
         if TI > 0:
-            wind = TurbWind(wind, TI)
+            wind = TurbWind(wind, TI, T)
 
         self._wind = wind
 

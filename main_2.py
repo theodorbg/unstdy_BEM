@@ -34,7 +34,8 @@ do = {
     "2_1_loop": False,
     "2_1_plots": False,
     "2_1_plots_compare_10mw": False,
-    "2_2_turb_loop": True,
+    "2_2_turb_loop": False,
+    "2_2_plots_compare_10mw": True,
 }
 
 if do["2_1_main"]:
@@ -266,13 +267,13 @@ if do["2_1_loop"]:
     df_results = pd.DataFrame(results_rows)
 
     # save results to csv
-    df_results.to_csv("cp_2_1_results.csv", index=False)
+    df_results.to_csv("sim_data/csv/cp_2_1_results.csv", index=False)
 
     # print df_results in latex table format
     print_latex_table(df_results)
 
 if do["2_1_plots"]:
-    df_results = pd.read_csv("cp_2_1_results.csv")
+    df_results = pd.read_csv("sim_data/csv/cp_2_1_results.csv")
     V_hub = df_results["V_hub"].to_numpy()
     cp_rotor = df_results["cp_rotor"].to_numpy()
     mech_out_rotor = df_results["mech_out_rotor"].to_numpy()/1e6
@@ -341,7 +342,7 @@ if do["2_1_plots"]:
     # )
 
 if do["2_1_plots_compare_10mw"]:
-    df_results = pd.read_csv("cp_2_1_results.csv")
+    df_results = pd.read_csv("sim_data/csv/cp_2_1_results.csv")
     V_hub = df_results["V_hub"].to_numpy()
     cp_rotor = df_results["cp_rotor"].to_numpy()
     mech_out_rotor = df_results["mech_out_rotor"].to_numpy()/1e6
@@ -384,6 +385,7 @@ if do["2_1_plots_compare_10mw"]:
 
 if do["2_2_turb_loop"]:
     V_hub_vals = np.linspace(1,25,100)
+    # V_hub_vals = [24, 25]
     #%% SET UP SIMULATION
     # structural parameters
     omega_init = 0.15
@@ -429,6 +431,7 @@ if do["2_2_turb_loop"]:
                 shear_exp=shear_exp,
                 tower_radius=structure.tower_radius if tower_effects else None,
                 TI=TI,
+                T=T,
             )
             
         # AERO INITIALISATION
@@ -456,7 +459,7 @@ if do["2_2_turb_loop"]:
         simulation = Simulation(structure, aero, wind=wind_profile, controller=controller, recorders=recorders)
         simulation.run(dt, T)
         print("\nSimulation complete. Saving data...\n")
-        simulation.save_recorders("sim_data", overwrite=True)
+        simulation.save_recorders("sim_data/recorders", overwrite=True)
 
         #%% EXTRACT DATA FROM RECORDERS
         # Get data (saving above not needed for this) for plotting
@@ -485,5 +488,93 @@ if do["2_2_turb_loop"]:
     df_results = pd.DataFrame(results_rows)
 
     # save results to csv
-    df_results.to_csv("cp_2_2_turb_results.csv", index=False)
+    df_results.to_csv("sim_data/csv/cp_2_2_turb_results.csv", index=False)
+    print("saved csv")
+
+if do["2_2_plots_compare_10mw"]:
+    
+    df_turb = pd.read_csv("sim_data/csv/cp_2_2_turb_results.csv")
+    # reference values from df_turb:
+    # V_hub = df_turb["V_hub"].to_numpy()
+    # cp_rotor = df_turb["cp_rotor"].to_numpy()
+    # mech_out_rotor = df_turb["mech_out_rotor"].to_numpy()/1e6
+    # power_gen = df_turb["power_gen"].to_numpy()/1e6
+    # omega = df_turb["omega"].to_numpy()
+    # pitch = df_turb["pitch"].to_numpy()
+    
+    # reference constants
+    shear_exp = 0.2
+    max_cp = 0.466
+    rated_power = 10.64
+    omega_rated = 9.6*np.pi/30
+    
+    df_no_turb = pd.read_csv("sim_data/csv/cp_2_1_results.csv")
+
+    
+    #10 mw data
+    ws_10 = np.asarray(df_power_bem["Windspeed [m/s]"])
+    p_10  = np.asarray(df_power_bem["Mech. Power [kW]"])/1e3 # convert from kW to MW
+    cp_10 = np.asarray(df_power_bem["CP [-]"])
+
+    ws_pitch = np.asarray(df_stiff_pitch["Windspeed [m/s]"])
+    pitch_10 = np.asarray(df_stiff_pitch["Pitch [deg.]"])
+    rpm_10   = np.asarray(df_stiff_pitch["RPM"])
+    omega_10 = rpm_10 * np.pi / 30
+        
+    v_ref = [(4, "cut-in"), (11.4, "rated"), (25, "cut-out")]
+
+    plot_flexible(
+        x_val=df_turb["V_hub"].to_numpy(),  # default x (not used when custom x is provided)
+        y_values=[
+            # Cp
+            [
+                (df_no_turb["V_hub"].to_numpy(), df_no_turb["cp_rotor"].to_numpy()),
+                (df_turb["V_hub"].to_numpy(),    df_turb["cp_rotor"].to_numpy()),
+                (ws_10, cp_10),
+            ],
+            [r"$C_p$ no turb", r"$C_p$ turb", r"$C_p$ 10MW REF"],
+
+            # Mechanical power (MW)
+            [
+                (df_no_turb["V_hub"].to_numpy(), df_no_turb["mech_out_rotor"].to_numpy() / 1e6),
+                (df_turb["V_hub"].to_numpy(),    df_turb["mech_out_rotor"].to_numpy() / 1e6),
+                (ws_10, p_10),
+            ],
+            ["rotor power no turb", "rotor power turb", "power 10MW REF"],
+
+            # Omega
+            [
+                (df_no_turb["V_hub"].to_numpy(), df_no_turb["omega"].to_numpy()),
+                (df_turb["V_hub"].to_numpy(),    df_turb["omega"].to_numpy()),
+                (ws_pitch, omega_10),
+            ],
+            [r"$\omega$ no turb", r"$\omega$ turb", r"$\omega$ 10MW REF"],
+
+            # Pitch
+            [
+                (df_no_turb["V_hub"].to_numpy(), df_no_turb["pitch"].to_numpy()),
+                (df_turb["V_hub"].to_numpy(),    df_turb["pitch"].to_numpy()),
+                (ws_pitch, pitch_10),
+            ],
+            [r"$\theta_p$ no turb", r"$\theta_p$ turb", r"$\theta_p$ 10MW REF"],
+        ],
+        x_label="V hub (m/s)",
+        y_units=[
+            "Rotor $C_p$ [-]",
+            "Mechanical Power (MW)",
+            "Shaft Speed (rad/s)",
+            "Pitch Angle (deg)",
+        ],
+        save_name="compare_noturb_turb_ref_cp_power_omega_pitch_vs_V_hub",
+        hlines=[
+            [(max_cp, r"$C_{p,\max}$")],
+            [(rated_power, "rated power", {"linestyle": ":"})],  # removed color
+            [(omega_rated, r"$\omega_{rated}$")],                # removed color
+            [],
+        ],
+        vlines=[v_ref, v_ref, v_ref, v_ref],
+        shear_exp=shear_exp,
+        ylims=[(0.05, 0.6), (0, 11), (0.1, 1.1), (-0.2, 24)],
+        legend_loc=["upper right", "lower right", "best", "lower right"]
+    )
 

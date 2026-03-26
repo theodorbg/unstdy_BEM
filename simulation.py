@@ -60,8 +60,9 @@ class Simulation:
         """
         self.recorders.append(time_recorder())
         self.dt = dt
+        self.T = T
 
-        n_sim_steps = int(T / dt)
+        n_sim_steps = int(self.T / dt)
         for recorder in self.recorders:
             recorder.update_n_steps(n_sim_steps)
 
@@ -79,7 +80,7 @@ class Simulation:
                 part.step(self)
 
             self.time += dt
-            print(f"Time: {self.time:.2f}, Progress: {self.time/T*100:.2f}%", end="\r")
+            print(f"Time: {self.time:.2f}, Progress: {self.time/self.T*100:.2f}%", end="\r")
 
     def get_recorders(self) -> dict[str, np.ndarray | dict[str, np.ndarray]]:
         """
@@ -144,4 +145,4 @@ if __name__ == "__main__":
         ShearWind(119, 10, 0.2),
     )
     sim.run(0.1, 30)
-    sim.save_recorders("sim_data", overwrite=True)
+    sim.save_recorders("sim_data/recorders", overwrite=True)

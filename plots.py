@@ -35,12 +35,12 @@ plt.rcParams.update({
 })
 
 def plot_flexible(
-    x_val: np.ndarray,
-    y_values: list,
-    labels: list,
-    x_label: str,
-    y_units: list,
-    save_name: str,
+    x_val: np.ndarray = None,
+    y_values: list = None,
+    labels: list = None,
+    x_label: str = None,
+    y_units: list = None,
+    save_name: str = None,
     shear_exp: float = 0.2,
     ylims=None,
     xlims=None,
@@ -56,76 +56,54 @@ def plot_flexible(
     y_major_nbins: int = Y_MAJOR_NBINS,
     x_minor_subdiv: int = X_MINOR_SUBDIV,
     y_minor_subdiv: int = Y_MINOR_SUBDIV,
+    legend_loc="best",          # NEW
+
 ):
-    """
-    Flexible multi-subplot plotting function with support for multiple lines per subplot.
-    
-    Parameters:
-    -----------
-    x_val : np.ndarray
-        1D array of x values (shared across all subplots)
-    y_values : list of lists
-        y data. Each inner list represents one subplot.
-    labels : list of lists
-        Labels for each line. Structure matches y_values.
-    x_label : str
-        Label for x-axis
-    y_units : list
-        Y-axis labels, one per subplot
-    save_name : str
-        Base filename for saving (without extension)
-    shear_exp : float
-        Shear exponent for filename
-    ylims : list of tuples, optional
-        Y-axis limits [(min, max), ...] per subplot
-    xlims : tuple, optional
-        X-axis limits (min, max)
-    fig_size : int
-        Figure width in inches
-    vlines : list of lists, optional
-        Vertical lines per subplot. Each item: (x_val, label) or (x_val, label, style_dict)
-    hlines : list of lists, optional
-        Horizontal lines per subplot. Each item: (y_val, label) or (y_val, label, style_dict)
-    dyn_wake, dyn_stall, tower, turb : bool
-        Feature flags for filename
-    show_plot : bool
-        Whether to display plot
-    x_major_nbins, y_major_nbins : int
-        Number of major ticks
-    x_minor_subdiv, y_minor_subdiv : int
-        Minor tick subdivisions
-    """
-    
-    # Ensure x_val is 1D numpy array
     x_val = np.asarray(x_val).flatten()
-    
+
+    # inline format support:
+    # y_values = [y_list0, labels0, y_list1, labels1, ...]
+    if labels is None and isinstance(y_values, list) and len(y_values) % 2 == 0:
+        parsed_y, parsed_labels = [], []
+        inline_ok = True
+        for i in range(0, len(y_values), 2):
+            y_i = y_values[i]
+            l_i = y_values[i + 1]
+            if not isinstance(y_i, (list, tuple, np.ndarray)):
+                inline_ok = False
+                break
+            if not isinstance(l_i, (list, tuple, np.ndarray)):
+                inline_ok = False
+                break
+            parsed_y.append(list(y_i))
+            parsed_labels.append(list(l_i))
+        if inline_ok:
+            y_values = parsed_y
+            labels = parsed_labels
+
+    if labels is None:
+        raise ValueError("labels is required unless provided inline inside y_values.")
+
     subplots = len(y_values)
-    
-    # --- auto-wrap flat lists into nested lists ---
-    if not isinstance(y_values[0], (list, np.ndarray)):
+
+    if not isinstance(y_values[0], (list, np.ndarray, tuple)):
         y_values = [[y] for y in y_values]
-    
     if not isinstance(labels[0], list):
         labels = [[l] for l in labels]
-    
-    # --- validate inputs ---
+
     assert len(y_values) == subplots, "y_values must have one list per subplot"
     assert len(labels) == subplots, "labels must have one list per subplot"
     assert len(y_units) == subplots, "y_units must have one entry per subplot"
-    
+
     if ylims is None:
         ylims = [None] * subplots
     assert len(ylims) == subplots, "ylims must have one entry per subplot"
-    
-    # --- normalize hlines to per-subplot list ---
+
     def _normalize_lines(lines_in, n_subplots):
-        """Normalize vlines/hlines to per-subplot format."""
         if lines_in is None:
             return [[] for _ in range(n_subplots)]
-        
         if isinstance(lines_in, (int, float, np.floating, dict)):
             return [[lines_in] for _ in range(n_subplots)]
-        
         if isinstance(lines_in, (list, tuple, np.ndarray)):
             if len(lines_in) == n_subplots:
                 out = []
@@ -137,19 +115,15 @@ def plot_flexible(
                     else:
                         raise TypeError(f"Unsupported line item type: {type(item)}")
                 return out
-            else:
-                return [list(lines_in) for _ in range(n_subplots)]
-        
+            return [list(lines_in) for _ in range(n_subplots)]
         raise TypeError(f"Unsupported lines type: {type(lines_in)}")
-    
+
     hlines_per_subplot = _normalize_lines(hlines, subplots)
     vlines_per_subplot = _normalize_lines(vlines, subplots)
-    
-    # --- create output folder ---
+
     save_path = Path("plots")
     save_path.mkdir(exist_ok=True)
-    
-    # --- build save name ---
+
     shear_exp_string = f"{shear_exp:.2f}".replace(".", "p")
     save_name += f"_shear_{shear_exp_string}"
     if not tower:
@@ -159,31 +133,54 @@ def plot_flexible(
     if not dyn_stall:
         save_name += "_no_dyn_stall"
     save_name += f"_turb_{turb}"
-    
-    # --- create figure ---
+
     fig, axes = plt.subplots(subplots, 1, figsize=(fig_size, 9 * subplots), sharex=True)
     if subplots == 1:
         axes = [axes]
-    
-    # --- plot data ---
-    for ax, y_list, label_list, y_unit, ylim, h_lines, v_lines in zip(
+
+    for idx, (ax, y_list, label_list, y_unit, ylim, h_lines, v_lines) in enumerate(zip(
         axes, y_values, labels, y_units, ylims, hlines_per_subplot, vlines_per_subplot
-    ):
-        # Plot y data
-        for i, (y, label) in enumerate(zip(y_list, label_list)):
+    )):
+        for i, (y_item, label) in enumerate(zip(y_list, label_list)):
+            # y_item can be:
+            # 1) y-array (uses shared x_val)
+            # 2) (x_custom, y_custom)
+            if isinstance(y_item, (tuple, list)) and len(y_item) == 2:
+                x_plot = np.asarray(y_item[0]).flatten()
+                y_plot = np.asarray(y_item[1]).flatten()
+            else:
+                x_plot = x_val
+                y_plot = np.asarray(y_item).flatten()
+
+            if x_plot.shape[0] != y_plot.shape[0]:
+                raise ValueError(
+                    f"x/y length mismatch for '{label}': "
+                    f"len(x)={x_plot.shape[0]}, len(y)={y_plot.shape[0]}"
+                )
+
             ax.plot(
-                x_val, y,
+                x_plot, y_plot,
                 label=label,
                 linewidth=LINE_WIDTH,
                 linestyle=LINE_STYLES[i % len(LINE_STYLES)],
             )
-        
-        # Add vertical lines
+
+        # auto color cycle for ref lines
+        ref_colors = plt.rcParams["axes.prop_cycle"].by_key().get(
+            "color", ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple"]
+        )
+        ref_idx = 0
+        def _next_ref_color():
+            nonlocal ref_idx
+            c = ref_colors[ref_idx % len(ref_colors)]
+            ref_idx += 1
+            return c
+
         for vline in v_lines:
             if isinstance(vline, dict):
                 ax.axvline(
                     x=vline["x"],
-                    color=vline.get("color", "gray"),
+                    color=vline.get("color", _next_ref_color()),
                     linestyle=vline.get("linestyle", "--"),
                     linewidth=vline.get("linewidth", LINE_WIDTH),
                     alpha=vline.get("alpha", 1.0),
@@ -196,17 +193,15 @@ def plot_flexible(
                     x_v, label_v, style = vline
                 else:
                     raise ValueError("vline must be (x, label) or (x, label, style_dict)")
-                
                 ax.axvline(
                     x=float(x_v),
-                    color=style.get("color", "gray"),
+                    color=style.get("color", _next_ref_color()),
                     linestyle=style.get("linestyle", "--"),
                     linewidth=style.get("linewidth", LINE_WIDTH),
                     alpha=style.get("alpha", 1.0),
                     label=label_v,
                 )
-        
-        # Add horizontal lines
+
         for hline in h_lines:
             if isinstance(hline, dict):
                 y_h = hline.get("y", hline.get("value"))
@@ -214,7 +209,7 @@ def plot_flexible(
                     raise ValueError("hline dict must contain 'y' or 'value'")
                 ax.axhline(
                     y=float(y_h),
-                    color=hline.get("color", "gray"),
+                    color=hline.get("color", _next_ref_color()),
                     linestyle=hline.get("linestyle", "--"),
                     linewidth=hline.get("linewidth", LINE_WIDTH),
                     alpha=hline.get("alpha", 1.0),
@@ -227,24 +222,17 @@ def plot_flexible(
                     y_h, label_h, style = hline
                 else:
                     raise ValueError("hline must be (y, label) or (y, label, style_dict)")
-                
                 ax.axhline(
                     y=float(y_h),
-                    color=style.get("color", "gray"),
+                    color=style.get("color", _next_ref_color()),
                     linestyle=style.get("linestyle", "--"),
                     linewidth=style.get("linewidth", LINE_WIDTH),
                     alpha=style.get("alpha", 1.0),
                     label=label_h,
                 )
             else:
-                ax.axhline(
-                    y=float(hline),
-                    color="gray",
-                    linestyle="--",
-                    linewidth=LINE_WIDTH,
-                )
-        
-        # Configure axes
+                ax.axhline(y=float(hline), color=_next_ref_color(), linestyle="--", linewidth=LINE_WIDTH)
+                
         ax.set_ylabel(y_unit)
         ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=x_major_nbins))
         ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=y_major_nbins))
@@ -253,26 +241,27 @@ def plot_flexible(
         ax.minorticks_on()
         ax.grid(True, which="major", alpha=1, linestyle="--")
         ax.grid(True, which="minor", alpha=0.5, linestyle=":")
-        ax.legend()
-        
+        # loc_i = legend_loc if isinstance(legend_loc, str) else legend_loc[axes.index(ax)]
+        # ax.legend(loc=loc_i)
+        if isinstance(legend_loc, (list, tuple)):
+            ax.legend(loc=legend_loc[idx])
+        else:
+            ax.legend(loc=legend_loc)
+
+
         if ylim is not None:
             ax.set_ylim(ylim[0], ylim[1])
-    
-    # Set x-axis limits
+
     if xlims is not None:
         axes[0].set_xlim(xlims[0], xlims[1])
-    
-    # Labels and title
+
     axes[-1].set_xlabel(x_label)
-    # plt.title(save_name.replace("_", " ").title(), fontsize=FONT_SIZE)
     plt.tight_layout()
-    
-    # Save and show
     plt.savefig(save_path / f"{save_name}.png", dpi=150, bbox_inches="tight")
     if show_plot:
         plt.show()
     plt.close()
-
+    
 
 def plot_flexible_old(
     x_val: np.ndarray = None,
@@ -398,92 +387,96 @@ def plot_flexible_old(
     if subplots == 1:
         axes = [axes]
 
-    for ax, y_list, label_list, y_unit, ylim, subplot_hlines in zip(
-        axes, y_values, labels, y_units, ylims, hlines_per_subplot
+    for ax, y_list, label_list, y_unit, ylim, h_lines, v_lines in zip(
+        axes, y_values, labels, y_units, ylims, hlines_per_subplot, vlines_per_subplot
     ):
-        for i, (y, label) in enumerate(zip(y_list, label_list)):
-            ax.plot(x_val, y, label=label,
-                    linewidth=LINE_WIDTH,
-                    linestyle=LINE_STYLES[i % len(LINE_STYLES)])
+        for i, (y_item, label) in enumerate(zip(y_list, label_list)):
+            # ...existing code...
+            ax.plot(
+                x_plot, y_plot,
+                label=label,
+                linewidth=LINE_WIDTH,
+                linestyle=LINE_STYLES[i % len(LINE_STYLES)],
+            )
 
-        if vlines is not None:
-            for vline_list in vlines:
-                for vline in vline_list:
-                    # dict form
-                    if isinstance(vline, dict):
-                        ax.axvline(
-                            x=vline["x"],
-                            color=vline.get("color", "gray"),
-                            linestyle=vline.get("linestyle", "--"),
-                            linewidth=vline.get("linewidth", LINE_WIDTH),
-                            alpha=vline.get("alpha", 1.0),
-                            label=vline.get("label", None),
-                        )
-                    # tuple/list form: (x, label) or (x, label, style_dict)
-                    elif isinstance(vline, (tuple, list)):
-                        if len(vline) == 2:
-                            x_val, label = vline
-                            style = {}
-                        elif len(vline) == 3 and isinstance(vline[2], dict):
-                            x_val, label, style = vline
-                        else:
-                            raise ValueError("Tuple/list vline must be (x, label) or (x, label, style_dict).")
-                        
-                        ax.axvline(
-                            x=float(x_val),
-                            color=style.get("color", "gray"),
-                            linestyle=style.get("linestyle", "--"),
-                            linewidth=style.get("linewidth", LINE_WIDTH),
-                            alpha=style.get("alpha", 1.0),
-                            label=label,
-                        )
+        # color cycle for ref lines (vlines + hlines)
+        ref_colors = plt.rcParams["axes.prop_cycle"].by_key().get(
+            "color", ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple"]
+        )
+        ref_idx = 0
+        def _next_ref_color():
+            nonlocal ref_idx
+            c = ref_colors[ref_idx % len(ref_colors)]
+            ref_idx += 1
+            return c
 
+        for vline in v_lines:
+            if isinstance(vline, dict):
+                color_v = vline.get("color", _next_ref_color())
+                ax.axvline(
+                    x=vline["x"],
+                    color=color_v,
+                    linestyle=vline.get("linestyle", "--"),
+                    linewidth=vline.get("linewidth", LINE_WIDTH),
+                    alpha=vline.get("alpha", 1.0),
+                    label=vline.get("label", None),
+                )
+            elif isinstance(vline, (tuple, list)):
+                if len(vline) == 2:
+                    x_v, label_v, style = vline[0], vline[1], {}
+                elif len(vline) == 3 and isinstance(vline[2], dict):
+                    x_v, label_v, style = vline
+                else:
+                    raise ValueError("vline must be (x, label) or (x, label, style_dict)")
+                color_v = style.get("color", _next_ref_color())
+                ax.axvline(
+                    x=float(x_v),
+                    color=color_v,
+                    linestyle=style.get("linestyle", "--"),
+                    linewidth=style.get("linewidth", LINE_WIDTH),
+                    alpha=style.get("alpha", 1.0),
+                    label=label_v,
+                )
 
-        # --- NEW: horizontal lines (per subplot) ---
-        for hline in subplot_hlines:
-            # dict form: {"y": ..., "label": ..., "color": ...}
+        for hline in h_lines:
             if isinstance(hline, dict):
-                y_val = hline.get("y", hline.get("value", None))
-                if y_val is None:
-                    raise ValueError("Each hline dict must contain 'y' (or 'value').")
+                y_h = hline.get("y", hline.get("value"))
+                if y_h is None:
+                    raise ValueError("hline dict must contain 'y' or 'value'")
+                color_h = hline.get("color", _next_ref_color())
                 ax.axhline(
-                    y=float(y_val),
-                    color=hline.get("color", "gray"),
+                    y=float(y_h),
+                    color=color_h,
                     linestyle=hline.get("linestyle", "--"),
                     linewidth=hline.get("linewidth", LINE_WIDTH),
                     alpha=hline.get("alpha", 1.0),
                     label=hline.get("label", None),
                 )
-
-            # tuple/list form: (y, label) or (y, label, style_dict)
             elif isinstance(hline, (tuple, list)):
                 if len(hline) == 2:
-                    y_val, label = hline
-                    style = {}
+                    y_h, label_h, style = hline[0], hline[1], {}
                 elif len(hline) == 3 and isinstance(hline[2], dict):
-                    y_val, label, style = hline
+                    y_h, label_h, style = hline
                 else:
-                    raise ValueError("Tuple/list hline must be (y, label) or (y, label, style_dict).")
-
+                    raise ValueError("hline must be (y, label) or (y, label, style_dict)")
+                color_h = style.get("color", _next_ref_color())
                 ax.axhline(
-                    y=float(y_val),
-                    color=style.get("color", "gray"),
+                    y=float(y_h),
+                    color=color_h,
                     linestyle=style.get("linestyle", "--"),
                     linewidth=style.get("linewidth", LINE_WIDTH),
                     alpha=style.get("alpha", 1.0),
-                    label=label,
+                    label=label_h,
                 )
-
-            # scalar form: y only
             else:
                 ax.axhline(
                     y=float(hline),
-                    color="gray",
+                    color=_next_ref_color(),
                     linestyle="--",
                     linewidth=LINE_WIDTH,
-                    alpha=1.0,
                 )
 
+                
         ax.set_ylabel(y_unit)
         ax.legend()
         ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=x_major_nbins))
