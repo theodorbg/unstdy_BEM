@@ -174,7 +174,10 @@ class TurbWind(Wind):
         self.mann_dir = os.path.join(os.path.dirname(__file__), "sim_data", "mann_boxes")
         os.makedirs(self.mann_dir, exist_ok=True)
 
-        fname = f"mann_box_{TI}_{u_mean}.nc"
+        # remove decimal point and trailing zeros from u_mean for filename
+        u_s = f"{u_mean:.2f}".rstrip("0").rstrip(".")
+
+        fname = f"mann_box_{TI}_{u_s}.nc"
         fpath = os.path.join(self.mann_dir, fname)
         
         if not os.path.exists(fpath):
