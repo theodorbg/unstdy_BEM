@@ -4,3 +4,5 @@ __pycache__/
 *.npz
 
 sim_data/
+
+mann_box_*.nc
