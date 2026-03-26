@@ -171,9 +171,13 @@ class TurbWind(Wind):
         self.dx=self.Lx/(self.n1-1)
         self.dz=Lz/(self.n3-1)
 
-        fname = f"mann_box_{TI}_{u_mean}.nc"   # this is the FOLDER name
+        self.mann_dir = os.path.join(os.path.dirname(__file__), "sim_data", "mann_boxes")
+        os.makedirs(self.mann_dir, exist_ok=True)
 
-        if not os.path.exists(fname):
+        fname = f"mann_box_{TI}_{u_mean}.nc"
+        fpath = os.path.join(self.mann_dir, fname)
+        
+        if not os.path.exists(fpath):
             print(f"Generating Mann box with TI={TI} and u_mean={u_mean} m/s")
             mann_box = MannTurbulenceField.generate(
                 Nxyz=(self.n1, self.n2, self.n3),
@@ -181,10 +185,10 @@ class TurbWind(Wind):
                 L=33.6, Gamma=3.9
             )
             mann_box.scale_TI(TI=self.TI, U=self.surrounding_wind.v_hub_mean)
-            mann_box.to_netcdf(filename = fname)
+            mann_box.to_netcdf(filename = fpath)
 
-        mann_box = MannTurbulenceField.from_netcdf(fname)  # this one takes the folder path directly
-        print("Mann box loaded from file")
+        mann_box = MannTurbulenceField.from_netcdf(fpath)  # this one takes the folder path directly
+        print(f"Mann box loaded from file: {fpath}")
 
         # Transform the Mann box to a `DataArray` (from the package `xarray`)
         self.da_mann_box = mann_box.to_xarray()
