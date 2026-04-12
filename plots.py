@@ -56,8 +56,10 @@ def plot_flexible(
     y_major_nbins: int = Y_MAJOR_NBINS,
     x_minor_subdiv: int = X_MINOR_SUBDIV,
     y_minor_subdiv: int = Y_MINOR_SUBDIV,
-    legend_loc="best",          # NEW
-
+    legend_loc="upper center",
+    shared_legend: bool = True,
+    legend_bbox_to_anchor=(0.5, 1.02),
+    legend_ncol: int = 5,
 ):
     x_val = np.asarray(x_val).flatten()
 
@@ -165,7 +167,7 @@ def plot_flexible(
                 linestyle=LINE_STYLES[i % len(LINE_STYLES)],
             )
 
-        # auto color cycle for ref lines
+        # color cycle for ref lines (vlines + hlines)
         ref_colors = plt.rcParams["axes.prop_cycle"].by_key().get(
             "color", ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple"]
         )
@@ -178,9 +180,10 @@ def plot_flexible(
 
         for vline in v_lines:
             if isinstance(vline, dict):
+                color_v = vline.get("color", _next_ref_color())
                 ax.axvline(
                     x=vline["x"],
-                    color=vline.get("color", _next_ref_color()),
+                    color=color_v,
                     linestyle=vline.get("linestyle", "--"),
                     linewidth=vline.get("linewidth", LINE_WIDTH),
                     alpha=vline.get("alpha", 1.0),
@@ -193,9 +196,10 @@ def plot_flexible(
                     x_v, label_v, style = vline
                 else:
                     raise ValueError("vline must be (x, label) or (x, label, style_dict)")
+                color_v = style.get("color", _next_ref_color())
                 ax.axvline(
                     x=float(x_v),
-                    color=style.get("color", _next_ref_color()),
+                    color=color_v,
                     linestyle=style.get("linestyle", "--"),
                     linewidth=style.get("linewidth", LINE_WIDTH),
                     alpha=style.get("alpha", 1.0),
@@ -207,9 +211,10 @@ def plot_flexible(
                 y_h = hline.get("y", hline.get("value"))
                 if y_h is None:
                     raise ValueError("hline dict must contain 'y' or 'value'")
+                color_h = hline.get("color", _next_ref_color())
                 ax.axhline(
                     y=float(y_h),
-                    color=hline.get("color", _next_ref_color()),
+                    color=color_h,
                     linestyle=hline.get("linestyle", "--"),
                     linewidth=hline.get("linewidth", LINE_WIDTH),
                     alpha=hline.get("alpha", 1.0),
@@ -222,46 +227,72 @@ def plot_flexible(
                     y_h, label_h, style = hline
                 else:
                     raise ValueError("hline must be (y, label) or (y, label, style_dict)")
+                color_h = style.get("color", _next_ref_color())
                 ax.axhline(
                     y=float(y_h),
-                    color=style.get("color", _next_ref_color()),
+                    color=color_h,
                     linestyle=style.get("linestyle", "--"),
                     linewidth=style.get("linewidth", LINE_WIDTH),
                     alpha=style.get("alpha", 1.0),
                     label=label_h,
                 )
             else:
-                ax.axhline(y=float(hline), color=_next_ref_color(), linestyle="--", linewidth=LINE_WIDTH)
+                ax.axhline(
+                    y=float(hline),
+                    color=_next_ref_color(),
+                    linestyle="--",
+                    linewidth=LINE_WIDTH,
+                )
+
                 
         ax.set_ylabel(y_unit)
+
+        if not shared_legend and legend_loc is not None:
+            if isinstance(legend_loc, (list, tuple)):
+                if legend_loc[idx] is not None:
+                    ax.legend(loc=legend_loc[idx])
+            else:
+                ax.legend(loc=legend_loc)
+
         ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=x_major_nbins))
         ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=y_major_nbins))
         ax.xaxis.set_minor_locator(ticker.AutoMinorLocator(x_minor_subdiv))
         ax.yaxis.set_minor_locator(ticker.AutoMinorLocator(y_minor_subdiv))
         ax.minorticks_on()
-        ax.grid(True, which="major", alpha=1, linestyle="--")
-        ax.grid(True, which="minor", alpha=0.5, linestyle=":")
-        # loc_i = legend_loc if isinstance(legend_loc, str) else legend_loc[axes.index(ax)]
-        # ax.legend(loc=loc_i)
-        if isinstance(legend_loc, (list, tuple)):
-            ax.legend(loc=legend_loc[idx])
-        else:
-            ax.legend(loc=legend_loc)
-
-
+        ax.grid(True, which='major', alpha=1, linestyle='--')
+        ax.grid(True, which='minor', alpha=0.5, linestyle=':')   # lower alpha for minor
         if ylim is not None:
             ax.set_ylim(ylim[0], ylim[1])
 
+    if shared_legend:
+        handles, labels_all = [], []
+        seen = set()
+        for ax in axes:
+            h, l = ax.get_legend_handles_labels()
+            for hh, ll in zip(h, l):
+                if ll and ll not in seen:
+                    handles.append(hh)
+                    labels_all.append(ll)
+                    seen.add(ll)
+
+        fig.legend(
+            handles,
+            labels_all,
+            loc=legend_loc,
+            bbox_to_anchor=legend_bbox_to_anchor,
+            ncol=legend_ncol,
+            frameon=True,
+        )
+
     if xlims is not None:
-        axes[0].set_xlim(xlims[0], xlims[1])
+        axes[0].set_xlim(xlims[0], xlims[1])  # shared x axis, only need to set once
 
     axes[-1].set_xlabel(x_label)
-    plt.tight_layout()
-    plt.savefig(save_path / f"{save_name}.png", dpi=150, bbox_inches="tight")
+    plt.tight_layout(rect=(0, 0, 1, 0.92))
+    plt.savefig(save_path / f"{save_name}.png", bbox_inches="tight")
     if show_plot:
         plt.show()
     plt.close()
-    
 
 def plot_flexible_old(
     x_val: np.ndarray = None,
@@ -391,7 +422,22 @@ def plot_flexible_old(
         axes, y_values, labels, y_units, ylims, hlines_per_subplot, vlines_per_subplot
     ):
         for i, (y_item, label) in enumerate(zip(y_list, label_list)):
-            # ...existing code...
+            # y_item can be:
+            # 1) y-array (uses shared x_val)
+            # 2) (x_custom, y_custom)
+            if isinstance(y_item, (tuple, list)) and len(y_item) == 2:
+                x_plot = np.asarray(y_item[0]).flatten()
+                y_plot = np.asarray(y_item[1]).flatten()
+            else:
+                x_plot = x_val
+                y_plot = np.asarray(y_item).flatten()
+
+            if x_plot.shape[0] != y_plot.shape[0]:
+                raise ValueError(
+                    f"x/y length mismatch for '{label}': "
+                    f"len(x)={x_plot.shape[0]}, len(y)={y_plot.shape[0]}"
+                )
+
             ax.plot(
                 x_plot, y_plot,
                 label=label,

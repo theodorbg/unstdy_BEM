@@ -60,8 +60,9 @@ class Controller:
 
         self.kk = kk  # gain reduction in degrees
 
-        self.omega_rated = omega_rated  # rad/s
-        self.omega_ref = self.omega_rated * ref_scale
+        # self.omega_rated = omega_rated  # rad/s
+        # self.omega_ref = self.omega_rated * ref_scale
+        self.ref_scale = ref_scale
 
         self.pitch_min = 0
         self.pitch_max = 90
@@ -84,6 +85,10 @@ class Controller:
         A = simulation.structure.A
 
         self.k_opt = 1/2 * rho * (R / self.tsr)**3 * A * self.cp_max
+        
+        self.omega_rated = (self.rated_power / self.k_opt)**(1/3)  # rad/s
+        self.omega_ref = self.omega_rated * self.ref_scale
+
 
         self.torque_gen = self.torque_gen_func(simulation)
         
