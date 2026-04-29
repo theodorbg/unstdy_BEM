@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from rotation import Rotation
-
+import re
 
 class Structure(ABC):
     """
@@ -62,23 +62,23 @@ class Structure(ABC):
 
         blade_data = pd.read_csv(file_blade)
 
-        r_old = blade_data["r"].to_numpy()
+        self.r_old = blade_data["r"].to_numpy()
         c_old = blade_data["c"].to_numpy()
         twist_old = blade_data["twist"].to_numpy()
         tc_old = blade_data["rel_thickness"].to_numpy()
 
         # 1 m grid, starting at r=1 m
         dr = 1.0
-        r_new = np.arange(1.0, np.floor(r_old[-1]) + 1.0, dr)  # 1,2,3,...,89
+        r_new = np.arange(1.0, np.floor(self.r_old[-1]) + 1.0, dr)  # 1,2,3,...,89
 
         # Interpolate (constant extrapolation at the left boundary)
         self.r = r_new
-        self.c = np.interp(r_new, r_old, c_old, left=c_old[0], right=c_old[-1])
-        self.twist = np.interp(r_new, r_old, twist_old, left=twist_old[0], right=twist_old[-1])
-        self.tc = np.interp(r_new, r_old, tc_old, left=tc_old[0], right=tc_old[-1])
+        self.c = np.interp(r_new, self.r_old, c_old, left=c_old[0], right=c_old[-1])
+        self.twist = np.interp(r_new, self.r_old, twist_old, left=twist_old[0], right=twist_old[-1])
+        self.tc = np.interp(r_new, self.r_old, tc_old, left=tc_old[0], right=tc_old[-1])
 
         # Optional: no blade below original root radius
-        root_mask = self.r < r_old[0]
+        root_mask = self.r < self.r_old[0]
         self.c[root_mask] = 0.0
 
         self.R = self.r[-1]
@@ -98,6 +98,7 @@ class Structure(ABC):
         self.phi_shaft = 0
         self.omega_shaft = omega_init
         self.inertia_rotor = 1.6e8
+        self.nacelle_mass = 446e3
         self._x5_blade = np.c_[self.r, np.zeros_like(self.r), np.zeros_like(self.r)]
 
         self.max_downstream_azi = self._max_downstream_azimuth(self._yaw, self._tilt)
@@ -349,6 +350,7 @@ class RigidStructure(Structure):
         pitch_rad = np.deg2rad(self.pitch[blade_idx])  # convert degrees to radians
         v = np.cos(pitch_rad) * wr
         w = np.sin(pitch_rad) * wr
+        #TODO CHANGE THIS WITH ASSIGNMENT 1 UPLOAD
         return np.c_[np.zeros_like(self.r), v, w]
 
     def x15(self, array: np.ndarray, blade_idx: int) -> np.ndarray:
@@ -372,15 +374,247 @@ class RigidStructure(Structure):
         x4 = Rotation.rotate_3d_z(x3, -self.blade_azimuth(blade_idx))
         return Rotation.rotate_3d_y(x4, -self.cone)
 
+class FlexibleStructure_5dof(Structure):
+    
+    #NOTE GM1: flapwise 1, gm2: e1, gm3: f2
+    def __init__(
+        self,
+        omega_init=0.0,
+        file_blade="data/blade_data.csv",
+        hub_height=119,
+        bot_thickness=3.32,
+        top_thickness=3.32,
+        l_shaft=7.1,
+        cone=0.0,
+        yaw=0.0,
+        tilt=0.0,
+        pitch_init=[0.0, 0.0, 0.0],        
+        file_modes="data/modeshapes.txt"):
+        super().__init__(
+            omega_init=omega_init,
+            file_blade=file_blade,
+            hub_height=hub_height,
+            bot_thickness=bot_thickness,
+            top_thickness=top_thickness,
+            l_shaft=l_shaft,
+            cone=cone,
+            yaw=yaw,
+            tilt=tilt,
+            pitch_init=pitch_init)
+        # Initialize additional attributes for flexible structure here
+        self. tower_stiffness = 1.7e6 # N/m
+        (self.u1_flap, self.u1_edge, self.u2_flap,
+         self.m,
+         self.omega1f, self.omega1e, self.omega2f) = self.read_modeshapes_file(file_modes)
+        
+        # initialize solution variables for the 5 DOF system
+        # self.z = np.array([0, 0, 0]) # tower deflection in wind direction (position, velocity, acceleration)
+        # self.theta = np.array([0, self.omega_init, 0]) # rotor azimuthal position (position, velocity, acceleration)
+        # self.q1 = np.array([0, 0, 0]) # flapwise 1: q, qdot, qddot (position, velocity, acceleration)
+        # self.q2 = np.array([0, 0, 0]) # edge-wise 1: q, qdot, qddot (position, velocity, acceleration)
+        # self.q3 = np.array([0, 0, 0]) # flapwise 2: q, qdot, qddot (position, velocity, acceleration)
+        # define x as vector to store the 5 DOF solution variables for position, velocity, and acceleration
+        self.x = np.zeros(5) # [z, theta, q1, q2, q3]
+        self.x_dot = np.zeros(5) # [z_dot, theta_dot, q1_dot, q2_dot, q3_dot]
+        self.x_dot[1] = self.omega_shaft # set initial condition for theta_dot
+        self.x_ddot = np.zeros(5) # [z_ddot, theta_ddot, q1_ddot, q2_ddot, q3_ddot]
+        
+        # initialize constants from avg. acceleration method (Newmark-beta) for time integration
+        self.beta = 0.25
+        self.gamma = 0.5
+        self.tolerance_r = 1e-7
+        self.tolerance_u = 1e-7
 
-if __name__ == "__main__":
-    wt_structure = RigidStructure(yaw=0, tilt=0, cone=90)
-    # print(wt_structure.blade_azimuth(0))
-    # print(wt_structure.blade_azimuth(1))
-    # print(wt_structure.blade_azimuth(2))
-    # print(wt_structure.blade_x1(0))
-    # print(wt_structure.blade_x1(1))
-    # print(wt_structure.blade_x1(2))
 
-    wind = np.asarray([0, 0, 10])
-    # print(wt_structure.x15(wind, 0))
+    def step(self, simulation):
+        self.z, self.theta, self.q1, self.q2, self.q3 = self.time_integration(simulation, solver="newmark")
+
+    def simulation_init(self, simulation):
+        # compute the matrices at t=0
+        self.K = self.K_matrix()
+        self.M = self.M_matrix()
+        self.GF = self.GF_vector(simulation)
+        
+        # compute initial acceleration
+        self.x_ddot = np.linalg.solve(self.M, self.GF - self.K @ self.x)
+
+    
+    def read_modeshapes_file(self, file_modes: str) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float, float, float]:
+        """Read the modeshapes text file into a DataFrame."""
+        cols = ["r", "u1fy", "u1fz", "u1ey", "u1ez", "u2fy", "u2fz", "m"]
+        # create standard modeshapes dataframe (only 18 radial positions)
+        df_modeshapes_std = pd.read_csv(
+            file_modes,
+            sep=r"\s+",
+            comment="#",
+            header=None,
+            names=cols,
+            engine="python",
+        )
+
+        df_modeshapes = pd.DataFrame({"r": self.r})
+
+        for col in cols[1:]:  # interpolate all columns except r
+            df_modeshapes[col] = np.interp(
+                self.r,
+                df_modeshapes_std["r"].to_numpy(),
+                df_modeshapes_std[col].to_numpy(),
+                left=df_modeshapes_std[col].iloc[0],
+                right=df_modeshapes_std[col].iloc[-1],
+            )
+            
+        u1fy = df_modeshapes["u1fy"].to_numpy()
+        u1fz = df_modeshapes["u1fz"].to_numpy()
+        u1_flap = np.array([u1fy, u1fz])
+        
+        u1ey = df_modeshapes["u1ey"].to_numpy()
+        u1ez = df_modeshapes["u1ez"].to_numpy()
+        u1_edge = np.array([u1ey, u1ez])
+        
+        u2fy = df_modeshapes["u2fy"].to_numpy()
+        u2fz = df_modeshapes["u2fz"].to_numpy()
+        u2_flap = np.array([u2fy, u2fz])
+        
+        m = df_modeshapes["m"].to_numpy()
+        
+        # Extract frequencies from comment lines
+        with open(file_modes, "r", encoding="utf-8") as f:
+            for line in f:
+                if "omega1f" in line and "omega1e" in line and "omega2f" in line:
+                    vals = re.findall(r"omega1f=([\d.]+)|omega1e=([\d.]+)|omega2f=([\d.]+)", line)
+                    flat = [x for group in vals for x in group if x]
+                    omega1f, omega1e, omega2f = map(float, flat)
+                    break
+
+        
+        return u1_flap, u1_edge, u2_flap, m, omega1f, omega1e, omega2f
+
+    def time_integration(self, simulation, solver="newmark"):
+        if solver == "newmark":
+            h = simulation.dt
+            
+            # at each time step, we need to update the system matrices
+            self.K = self.K_matrix()
+            self.M = self.M_matrix()
+            self.GF = self.GF_vector(simulation)
+                        
+            # (2) predict x and x_dot at next time step
+            
+            self.x_dot = self.x_dot + h * self.x_ddot
+            self.x = self.x + h * self.x_dot + 0.5 * h**2 * self.x_ddot
+            
+            while residual > self.tolerance_r or np.linalg.norm(delta_u) > self.tolerance_u:
+
+                
+                # (3) compute residual: r = f-Mx_ddot-Kx - Cx_dot, but we don't have damping yet, so C=0
+                residual = self.GF - self.M @ self.x_ddot -self.K @ self.x
+                
+                # (4) system matrices and increment correction
+                K_star = self.K + 1/(self.beta * h) * self.M
+                delta_u = np.linalg.inv(K_star) @ residual
+                
+                self.x += delta_u
+                self.x_dot += self.gamma/(self.beta*h) * delta_u
+                self.x_ddot += 1/(self.beta*h**2) * delta_u
+            
+            
+            z = np.array([self.x[0], self.x_dot[0], self.x_ddot[0]])
+            theta = np.array([self.x[1], self.x_dot[1], self.x_ddot[1]])
+            q1 = np.array([self.x[2], self.x_dot[2], self.x_ddot[2]])
+            q2 = np.array([self.x[3], self.x_dot[3], self.x_ddot[3]])
+            q3 = np.array([self.x[4], self.x_dot[4], self.x_ddot[4]])
+            
+            return z, theta, q1, q2, q3
+                
+        
+                
+    
+    def GM(self):
+        # combine y,z components -> scalar generalized masses
+        y1 = np.sum(self.u1_flap**2 * self.m, axis=0)
+        y2 = np.sum(self.u1_edge**2 * self.m, axis=0)
+        y3 = np.sum(self.u2_flap**2 * self.m, axis=0)
+
+        # integrate over radius (use x=self.r)
+        self.gm1 = np.trapz(y1, x=self.r)
+        self.gm2 = np.trapz(y2, x=self.r)
+        self.gm3 = np.trapz(y3, x=self.r)
+        
+    def K_matrix(self):
+        # omega = natural frequencies
+
+        K = np.diag([self.tower_stiffness, 0, self.omega1f**2 * self.gm1, self.omega1e**2 * self.gm2, self.omega2f**2 * self.gm3])
+        return K    
+    
+    def M_matrix(self):
+        
+        # create 5x5 matrix
+        M = np.zeros((5, 5))
+        M[0, 0] = self.nacelle_mass + 3 * np.trapezoid(self.m, self.r)
+        # fill out row by row
+        # row 1
+        M[0, 1] = 0
+        M[0, 2] = np.trapezoid(self.m * self.u1_flap[1], self.r)
+        M[0, 3] = np.trapezoid(self.m * self.u1_edge[1], self.r)
+        M[0, 4] = np.trapezoid(self.m * self.u2_flap[1], x=self.r)
+        # row 2
+        M[1, 0] = 0
+        M[1, 1] = self.inertia_rotor 
+        M[1, 2] = np.trapezoid(self.m * self.r * self.u1_flap[0], self.r)
+        M[1, 3] = np.trapezoid(self.m * self.r * self.u1_edge[0], self.r)
+        M[1, 4] = np.trapezoid(self.m * self.r * self.u2_flap[0], self.r)
+        # row 3
+        M[2, 0] = np.trapezoid(self.m * self.u1_flap[1], self.r)
+        M[2, 1] = np.trapezoid(self.m * self.r * self.u1_flap[0], self.r)
+        M[2, 2] = self.gm1
+        M[2, 3] = 0
+        M[2, 4] = 0
+        # row 4
+        M[3, 0] = np.trapezoid(self.m * self.u1_edge[1], self.r)
+        M[3, 1] = np.trapezoid(self.m * self.r * self.u1_edge[0], self.r)
+        M[3, 2] = 0
+        M[3, 3] = self.gm2
+        M[3, 4] = 0
+        # row 5
+        M[4, 0] = np.trapezoid(self.m * self.u2_flap[1], self.r)
+        M[4, 1] = np.trapezoid(self.m * self.r * self.u2_flap[0], self.r)
+        M[4, 2] = 0
+        M[4, 3] = 0
+        M[4, 4] = self.gm3
+        
+        return M
+        
+    def GF_vector(self, simulation):
+        T = simulation.aero.rotor._thrust
+        M_R = simulation.aero.rotor._torque
+        M_G = controller.torque_gen_func(simulation)
+        
+        GF = np.array([
+            T,
+            M_R - M_G,
+            np.trapzoid(simulation.aero.rotor.blade.p * self.u1_flap, self.r),
+            np.trapzoid(simulation.aero.rotor.blade.p * self.u1_edge, self.r),
+            np.trapzoid(simulation.aero.rotor.blade.p * self.u2_flap, self.r)
+            
+        ])
+        
+        return GF
+    
+            
+    def blade_vibration(self):
+        u_blade = self.q1[1] * self.u1_flap + self.q2[1] * self.u1_edge + self.q3[1] * self.u2_flap
+        tower = np.array([0, self.z[1]])
+        return u_blade, tower            
+    
+    def blade_x1(self, blade_idx: int) -> np.ndarray:
+        # Implement the logic to return the coordinates of blade number `blade_idx` in coordinate system 1
+        pass
+
+    def blade_u5(self, blade_idx: int) -> np.ndarray:
+        # Implement the logic to return the velocities due to the motion of the blade in coordinate system 5
+        pass
+
+    def x15(self, array: np.ndarray, blade_idx: int) -> np.ndarray:
+        # Implement the logic to transform an array from coordinate system 1 into the blade coordinate system 5
+        pass
+

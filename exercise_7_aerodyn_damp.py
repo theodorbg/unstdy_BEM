@@ -226,10 +226,10 @@ mask = (theta_deg >= 0.0) & (theta_deg <= 180.0)
 theta_plot = theta_deg[mask]
 
 # ---- font/size controls (adjust these) ----
-FS_LABEL =          10        # axis label font size
-FS_TICK =           10        # tick-number font size
-FS_LEGEND =         10        # legend text font size
-FS_LEGEND_TITLE =   10        # legend title font size
+FS_LABEL =          1        # axis label font size
+FS_TICK =           1        # tick-number font size
+FS_LEGEND =         1        # legend text font size
+FS_LEGEND_TITLE =   1        # legend title font size
 # -------------------------------------------
 
 fig, ax = plt.subplots(figsize=(10, 6))

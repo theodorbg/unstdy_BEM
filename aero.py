@@ -20,7 +20,8 @@ class Aero:
                  glauert = False,
                  use_dyn_wake = False,
                  use_dyn_stall = False,
-                 use_wake_effects: bool | str = True) -> None:
+                 use_wake_effects: bool | str = True,
+                 use_structural_dynamics: bool | str = False) -> None:
            
            """Initialize the Aero class with given parameters."""
            self.V_hub = V_hub
@@ -28,6 +29,7 @@ class Aero:
            self.use_dyn_wake = use_dyn_wake
            self.use_dyn_stall = use_dyn_stall
            self.use_wake_effects = use_wake_effects
+           self.use_structural_dynamics = use_structural_dynamics
            self._wake_r_idx = 0
 
 
@@ -79,6 +81,12 @@ class Aero:
                 else:
                     blade.vrel[0] = blade.v0[0]+ blade.w_qs_prev[0] - omega*x*cos(cone) # y 
                     blade.vrel[1] = blade.v0[1] + blade.w_qs_prev[1] #z
+                
+                if self.use_structural_dynamics:
+                    # compute blade vibrations and add to relative velocity
+                    u_blade, tower = simulation.structure.blade_vibration()
+                    blade.vrel = blade.vrel - u_blade - tower
+                    #TODO implement vibrations in velocity triangle
 
 
                 # calculate norm of relative velocity
