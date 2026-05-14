@@ -1,0 +1,3 @@
+read pdf from jonas
+implement gravity? where??
+look into coordinate transformations

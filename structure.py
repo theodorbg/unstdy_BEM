@@ -346,12 +346,14 @@ class RigidStructure(Structure):
         np.ndarray
             Velocities as numpy array as [u, v, w] in coordinate system 5.
         """
-        wr = self.omega_shaft * self.r
-        pitch_rad = np.deg2rad(self.pitch[blade_idx])  # convert degrees to radians
-        v = np.cos(pitch_rad) * wr
-        w = np.sin(pitch_rad) * wr
-        #TODO CHANGE THIS WITH ASSIGNMENT 1 UPLOAD
-        return np.c_[np.zeros_like(self.r), v, w]
+        # wr = self.omega_shaft * self.r
+        # pitch_rad = np.deg2rad(self.pitch[blade_idx])  # convert degrees to radians
+        # v = np.cos(pitch_rad) * wr
+        # w = np.sin(pitch_rad) * wr
+        # #TODO CHANGE THIS WITH ASSIGNMENT 1 UPLOAD
+        # return np.c_[np.zeros_like(self.r), v, w]
+        return np.c_[np.zeros_like(self.r), self.omega_shaft * self.r, np.zeros_like(self.r)]
+
 
     def x15(self, array: np.ndarray, blade_idx: int) -> np.ndarray:
         """
@@ -402,11 +404,15 @@ class FlexibleStructure_5dof(Structure):
             tilt=tilt,
             pitch_init=pitch_init)
         # Initialize additional attributes for flexible structure here
+        # only blade 1/0 is flexible so:
+        self.FLEX_BLADE_IDX = 0
         self. tower_stiffness = 1.7e6 # N/m
         (self.u1_flap, self.u1_edge, self.u2_flap,
          self.m,
          self.omega1f, self.omega1e, self.omega2f) = self.read_modeshapes_file(file_modes)
         
+        self.DOF = 5
+        self.STATES = 3
         # initialize solution variables for the 5 DOF system
         # self.z = np.array([0, 0, 0]) # tower deflection in wind direction (position, velocity, acceleration)
         # self.theta = np.array([0, self.omega_init, 0]) # rotor azimuthal position (position, velocity, acceleration)
@@ -414,26 +420,43 @@ class FlexibleStructure_5dof(Structure):
         # self.q2 = np.array([0, 0, 0]) # edge-wise 1: q, qdot, qddot (position, velocity, acceleration)
         # self.q3 = np.array([0, 0, 0]) # flapwise 2: q, qdot, qddot (position, velocity, acceleration)
         # define x as vector to store the 5 DOF solution variables for position, velocity, and acceleration
-        self.x = np.zeros(5) # [z, theta, q1, q2, q3]
-        self.x_dot = np.zeros(5) # [z_dot, theta_dot, q1_dot, q2_dot, q3_dot]
+        self.x = np.zeros(self.DOF) # [z, theta, q1, q2, q3]
+        self.x_dot = np.zeros(self.DOF) # [z_dot, theta_dot, q1_dot, q2_dot, q3_dot]
         self.x_dot[1] = self.omega_shaft # set initial condition for theta_dot
-        self.x_ddot = np.zeros(5) # [z_ddot, theta_ddot, q1_ddot, q2_ddot, q3_ddot]
+        self.x_ddot = np.zeros(self.DOF) # [z_ddot, theta_ddot, q1_ddot, q2_ddot, q3_ddot]
         
+        self.z =np.zeros(self.STATES) # tower deflection in wind direction (position, velocity, acceleration)
+        self.theta = np.zeros(self.STATES) 
+        self.q1 = np.zeros(self.STATES) 
+        self.q2 = np.zeros(self.STATES) 
+        self.q3 = np.zeros(self.STATES) 
+
+        self.GF = np.zeros(self.DOF)
+
+
         # initialize constants from avg. acceleration method (Newmark-beta) for time integration
         self.beta = 0.25
         self.gamma = 0.5
         self.tolerance_r = 1e-7
         self.tolerance_u = 1e-7
+        self.delta_u = np.ones_like(self.x) # initialize delta_u to enter the while loop
+        self.max_iter = 1000
+
 
 
     def step(self, simulation):
         self.z, self.theta, self.q1, self.q2, self.q3 = self.time_integration(simulation, solver="newmark")
 
     def simulation_init(self, simulation):
+        
+        # initialize solutions to 0 so the recorder doesn't break, but we will overwrite them in the first time step of the simulation
+        
         # compute the matrices at t=0
+        self.gm1, self.gm2, self.gm3 = self.GM()
         self.K = self.K_matrix()
         self.M = self.M_matrix()
-        self.GF = self.GF_vector(simulation)
+        # we pretend that the forces:GF at t=0 is 0
+        # self.GF = self.GF_vector(simulation, T=0, M_G=0, M_R=0))
         
         # compute initial acceleration
         self.x_ddot = np.linalg.solve(self.M, self.GF - self.K @ self.x)
@@ -494,6 +517,7 @@ class FlexibleStructure_5dof(Structure):
             h = simulation.dt
             
             # at each time step, we need to update the system matrices
+            self.gm1, self.gm2, self.gm3 = self.GM()
             self.K = self.K_matrix()
             self.M = self.M_matrix()
             self.GF = self.GF_vector(simulation)
@@ -503,19 +527,27 @@ class FlexibleStructure_5dof(Structure):
             self.x_dot = self.x_dot + h * self.x_ddot
             self.x = self.x + h * self.x_dot + 0.5 * h**2 * self.x_ddot
             
-            while residual > self.tolerance_r or np.linalg.norm(delta_u) > self.tolerance_u:
+            # compute the residual before we enter the whiel loop
+            self.residual = self.GF - self.M @ self.x_ddot -self.K @ self.x
+            
+            it = 0
+            while (np.linalg.norm(self.residual) > self.tolerance_r or
+                   np.linalg.norm(self.delta_u) > self.tolerance_u
+                   and it<self.max_iter):
+                
+                it += 1
 
-                
-                # (3) compute residual: r = f-Mx_ddot-Kx - Cx_dot, but we don't have damping yet, so C=0
-                residual = self.GF - self.M @ self.x_ddot -self.K @ self.x
-                
                 # (4) system matrices and increment correction
                 K_star = self.K + 1/(self.beta * h) * self.M
-                delta_u = np.linalg.inv(K_star) @ residual
+                self.delta_u = np.linalg.inv(K_star) @ self.residual
                 
-                self.x += delta_u
-                self.x_dot += self.gamma/(self.beta*h) * delta_u
-                self.x_ddot += 1/(self.beta*h**2) * delta_u
+                self.x += self.delta_u
+                self.x_dot += self.gamma/(self.beta*h) * self.delta_u
+                self.x_ddot += 1/(self.beta*h**2) * self.delta_u
+                
+                # move the residual computation to the bottom to avoid doing it twice in the first iteration
+                # (3) compute residual: r = f-Mx_ddot-Kx - Cx_dot, but we don't have damping yet, so C=0
+                self.residual = self.GF - self.M @ self.x_ddot -self.K @ self.x
             
             
             z = np.array([self.x[0], self.x_dot[0], self.x_ddot[0]])
@@ -536,10 +568,12 @@ class FlexibleStructure_5dof(Structure):
         y3 = np.sum(self.u2_flap**2 * self.m, axis=0)
 
         # integrate over radius (use x=self.r)
-        self.gm1 = np.trapz(y1, x=self.r)
-        self.gm2 = np.trapz(y2, x=self.r)
-        self.gm3 = np.trapz(y3, x=self.r)
+        gm1 = np.trapz(y1, x=self.r)
+        gm2 = np.trapz(y2, x=self.r)
+        gm3 = np.trapz(y3, x=self.r)
         
+        return gm1, gm2, gm3
+
     def K_matrix(self):
         # omega = natural frequencies
 
@@ -587,16 +621,15 @@ class FlexibleStructure_5dof(Structure):
     def GF_vector(self, simulation):
         T = simulation.aero.rotor._thrust
         M_R = simulation.aero.rotor._torque
-        M_G = controller.torque_gen_func(simulation)
-        
-        GF = np.array([
-            T,
-            M_R - M_G,
-            np.trapzoid(simulation.aero.rotor.blade.p * self.u1_flap, self.r),
-            np.trapzoid(simulation.aero.rotor.blade.p * self.u1_edge, self.r),
-            np.trapzoid(simulation.aero.rotor.blade.p * self.u2_flap, self.r)
-            
-        ])
+        M_G = simulation.controller.torque_gen_func(simulation)
+
+        p = simulation.aero.rotor.blades[self.FLEX_BLADE_IDX].p  # shape (2, N)
+
+        gf3 = np.trapezoid(np.sum(p * self.u1_flap, axis=0), x=self.r)  # scalar
+        gf4 = np.trapezoid(np.sum(p * self.u1_edge, axis=0), x=self.r)  # scalar
+        gf5 = np.trapezoid(np.sum(p * self.u2_flap, axis=0), x=self.r)  # scalar
+
+        GF = np.array([T, M_R - M_G, gf3, gf4, gf5], dtype=float)
         
         return GF
     

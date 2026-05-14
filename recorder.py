@@ -202,5 +202,20 @@ def cp_rotor_recorder(name: str):
         return cp
     return Recorder(cp_rotor, name, "cp_rotor")
 
-
+def flap1_recorder(name: str):
+    def get_flap1(simulation):
+        flap1 = simulation.structure.q1[0] * simulation.structure.u1_flap[:, -1]
+        return np.asarray([flap1[0], flap1[1]], dtype=float)
+    return Recorder(get_flap1, name, ("y", "z"))
         
+def edge1_recorder(name: str):
+    def get_edge1(simulation):
+        edge1 = simulation.structure.q2[0] * simulation.structure.u1_edge[:, -1]
+        return np.asarray([edge1[0], edge1[1]], dtype=float)
+    return Recorder(get_edge1, name, ("y", "z"))
+
+def flap2_recorder(name: str):
+    def get_flap2(simulation):
+        flap2 = simulation.structure.q3[0] * simulation.structure.u2_flap[:, -1]
+        return np.asarray([flap2[0], flap2[1]], dtype=float)
+    return Recorder(get_flap2, name, ("y", "z"))

@@ -12,7 +12,35 @@ from structure import Structure
 from airfoils import airfoils
 
 class Aero:
+    """
+    Calculate aerodynamic properties like:
+    - velocity triangle
+    - 2d aerodynamics: lift, drag, spanwise loads py pz
+    - update induced wind from momentum equations
     
+    Attributes:
+        Vrel (type): Relative velocity vector.
+        W (type): Induced velocity vector.
+        V0 (type): Free stream velocity vector.
+        phi (type): Flow angle in radians.
+        aoa (type): Angle of attack in radians.
+        twist (type): Blade twist angle in radians.
+        pitch (type): Blade pitch angle in radians.
+        cl (type): Lift coefficient.
+        cd (type): Drag coefficient.
+        lift (type): Lift force.
+        drag (type): Drag force.
+        chord (type): chord length
+        p_z (type): spanwise load z direction
+        p_y (type): spanwise load y direction
+        a (type): axial induction factor
+        f_g (type): Glauert correction factor
+        F (type): Prandtl tip loss factor
+        RHO (type): Air density in kg/m^3
+    
+    """
+    
+    # Class attributes (shared by all instances)
     RHO = 1.225
     
     def __init__(self,
@@ -320,29 +348,29 @@ class Blade:
 
     def __init__(self, simulation, blade_idx, blade_sections) -> None:
         
-        self.blade_idx = blade_idx
-        self.w_qs       = np.zeros((2, blade_sections))
-        self.w_qs_prev  = np.zeros((2, blade_sections))
-        self.w_int      = np.zeros((2, blade_sections))
-        self.w          = np.zeros((2, blade_sections))
-        self.vrel       = np.zeros((2,blade_sections))
-        self.v0         = np.zeros((2,blade_sections))
+        self.blade_idx = blade_idx # blade index
+        self.w_qs       = np.zeros((2, blade_sections)) # quasi-steady induced velocity
+        self.w_qs_prev  = np.zeros((2, blade_sections)) # quasi-steady induced velocity from previous time step, used for dynamic wake calculation
+        self.w_int      = np.zeros((2, blade_sections)) # intermediate variable for dynamic wake calculation
+        self.w          = np.zeros((2, blade_sections)) # induced velocity with dynamic wake effects
+        self.vrel       = np.zeros((2,blade_sections)) # relative velocity
+        self.v0         = np.zeros((2,blade_sections)) # free stream velocity
         
-        self.p          = np.zeros((2,blade_sections))
+        self.p          = np.zeros((2,blade_sections)) # pressure distribution along the blade
 
-        self.fs         = np.zeros(blade_sections)
+        self.fs         = np.zeros(blade_sections) # dynamic stall state variable, between 0 and 1, where 1 means fully stalled and 0 means no stall. Updated in dyn_stall function.
 
         # blade data from structure for easy access in the step function
-        self.chord = simulation.structure.c
-        self.r = simulation.structure.r
-        self.R = simulation.structure.R
-        self.twist = simulation.structure.twist
-        self.tc = simulation.structure.tc
+        self.chord = simulation.structure.c # chord distribution along the blade
+        self.r = simulation.structure.r # radial positions of blade sections
+        self.R = simulation.structure.R # rotor radius
+        self.twist = simulation.structure.twist # twist distribution along the blade
+        self.tc = simulation.structure.tc # thickness to chord ratio distribution along the blade
         # outcommented for dynamic pitch
         # self.pitch = simulation.structure.pitch[self.blade_idx]
 
 
-        self._thrust = 0.0
+        self._thrust = 0.0 
         self._torque = 0.0
         self._power = 0.0
 

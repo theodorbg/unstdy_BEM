@@ -135,14 +135,3 @@ class Simulation:
                 continue
             pd.DataFrame(time | data).to_csv(save_to, index=False)
 
-
-if __name__ == "__main__":
-    from structure import RigidStructure
-    from wind import ShearWind
-
-    sim = Simulation(
-        RigidStructure(0.62),
-        ShearWind(119, 10, 0.2),
-    )
-    sim.run(0.1, 30)
-    sim.save_recorders("sim_data/recorders", overwrite=True)

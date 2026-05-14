@@ -49,6 +49,7 @@ def plot_flexible(
     hlines=None,
     dyn_wake=True,
     dyn_stall=True,
+    structural_dynamics=False,
     tower=True,
     turb=0,
     show_plot=False,
@@ -126,14 +127,18 @@ def plot_flexible(
     save_path = Path("plots")
     save_path.mkdir(exist_ok=True)
 
-    shear_exp_string = f"{shear_exp:.2f}".replace(".", "p")
-    save_name += f"_shear_{shear_exp_string}"
+    # shear_exp_string = f"{shear_exp:.2f}".replace(".", "p")
+    # save_name += f"_shear_{shear_exp_string}"
     if not tower:
         save_name += "_no_tower"
     if not dyn_wake:
         save_name += "_no_dyn_wake"
     if not dyn_stall:
         save_name += "_no_dyn_stall"
+    if not structural_dynamics:
+        save_name += "_rigid_structure"
+    else:        
+        save_name += "_flexible_structure"
     save_name += f"_turb_{turb}"
 
     fig, axes = plt.subplots(subplots, 1, figsize=(fig_size, 9 * subplots), sharex=True)
