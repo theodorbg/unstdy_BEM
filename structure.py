@@ -509,79 +509,72 @@ class FlexibleStructure5DOF(Structure):
         This is used for the mass matrix and natural frequency calculations."""
         GM = np.array([
             np.trapezoid(self.m * (u_y_R[i]**2 + u_z_R[i]**2), self.r)
-            for i in range(3)
+            for i in range(self.NO_BLADE_MODES)
         ])
         return GM
 
     def _build_K(self, GM):
-        """Build the stiffness matrix K, which is diagonal with tower stiffness and modal stiffnesses."""
         K = np.zeros((self.DOF, self.DOF))
         K[0, 0] = self.tower_stiffness
-        for i in range(3):
-            K[2 + i, 2 + i] = self.omega_modes[i]**2 * GM[i]
+        for i in range(self.NO_BLADE_MODES):
+            idx = self.BLADE_MODE_START_IDX + i
+            K[idx, idx] = self.omega_modes[i]**2 * GM[i]
         return K
 
     def _build_M(self, GM, u_y_R, u_z_R):
-        """Build the mass matrix M, which includes the effective mass of the tower-blade system and the modal masses, as well as coupling terms that depend on the pitch."""
         M = np.zeros((self.DOF, self.DOF))
-        M[0, 0] = self.M_eff          # tower: nacelle + all blade mass
-        M[1, 1] = self.inertia_rotor  # azimuth: full rotor inertia
-        
-        for i in range(3):
-            # Tower-blade coupling: integral m * u_z_R[i] dr
+        M[0, 0] = self.M_eff
+        M[1, 1] = self.inertia_rotor
+
+        for i in range(self.NO_BLADE_MODES):
+            idx = self.BLADE_MODE_START_IDX + i
             c_ti = np.trapezoid(self.m * u_z_R[i], self.r)
-            M[0, 2 + i] = c_ti
-            M[2 + i, 0] = c_ti
-            # Azimuth-blade coupling: integral m * r * u_y_R[i] dr
+            M[0, idx] = c_ti
+            M[idx, 0] = c_ti
             c_ai = np.trapezoid(self.m * self.r * u_y_R[i], self.r)
-            M[1, 2 + i] = c_ai
-            M[2 + i, 1] = c_ai
-            # Blade diagonal
-            M[2 + i, 2 + i] = GM[i]
-            
+            M[1, idx] = c_ai
+            M[idx, 1] = c_ai
+            M[idx, idx] = GM[i]
+
         return M
 
+
     def _build_GF(self, simulation, u_y_R, u_z_R):
-        """Build the generalized force vector GF, which includes aerodynamic forces and moments as well as gravity."""
         GF = np.zeros(self.DOF)
 
-        # Tower: total aerodynamic thrust
         T = simulation.aero.rotor._thrust
         GF[0] = float(T) if isinstance(T, (int, float, np.floating)) else 0.0
 
-        
-        # Azimuth: aerodynamic torque - generator torque + gravitational torque (all blades)
         Q_aero = simulation.aero.rotor._torque
         Q_gen  = simulation.controller.torque_gen
         GF[1]  = float(Q_aero) - float(Q_gen)
-        
+
+        # Average gravity over all blades (sum cancels for equally-spaced blades)
         if self.use_gravity:
-            # Mode shape modal forces: aerodynamic loads + gravity
-            g1 = np.array([-self.g, 0.0, 0.0])   # gravity in frame 1 [m/s^2], x1 = up -> -g (not +g)
-            g5 = self.x15(g1, 0) # for blade 0, but gravity is the same for all blades so we can use the same g5 for all blades
-            
-            # Calculate the gravitational force contributions to the modal forces for each mode
-            Fg_y = g5[1]*self.m
-            Fg_z = g5[2]*self.m
+            g1 = np.array([-self.g, 0.0, 0.0])
+            g5 = self.x15(g1, self.FLEX_BLADE_IDX)
+            Fg_y = g5[1] * self.m
+            Fg_z = g5[2] * self.m
+            # average over blades — or keep as sum if GF represents all blades
         else:
             Fg_y = np.zeros_like(self.r)
             Fg_z = np.zeros_like(self.r)
-            
+
         # Extract the aerodynamic force distribution along the blade in the blade coordinate system
         if simulation.aero.rotor.blades[self.FLEX_BLADE_IDX].p is None:
             p_y = np.zeros_like(self.r)
             p_z = np.zeros_like(self.r)
         else:
-            p_y = simulation.aero.rotor.blades[self.FLEX_BLADE_IDX].p[0] # edgewise aerodynamic force distribution along the blade
-            p_z = simulation.aero.rotor.blades[self.FLEX_BLADE_IDX].p[1] # flapwise aerodynamic force distribution along the blade
-        
+            p_y = simulation.aero.rotor.blades[self.FLEX_BLADE_IDX].p[0]
+            p_z = simulation.aero.rotor.blades[self.FLEX_BLADE_IDX].p[1]
+
         # Add gravitational force contributions to spanwise and flapwise loads (copies, not views)
         p_y = p_y + Fg_y
         p_z = p_z + Fg_z
 
-        # Calculate the generalized forces for each mode
-        for i in range(3):
-            GF[2 + i] += np.trapezoid(p_y * u_y_R[i] + p_z * u_z_R[i], self.r)
+        for i in range(self.NO_BLADE_MODES):
+            idx = self.BLADE_MODE_START_IDX + i
+            GF[idx] += np.trapezoid(p_y * u_y_R[i] + p_z * u_z_R[i], self.r)
 
         return GF
     
@@ -1012,11 +1005,12 @@ class FlexibleStructure11DOF(Structure):
 
             # Get pitch-rotated mode shapes and modal masses (collective pitch — same for all blades)
             u_y_R_pred, u_z_R_pred = self._pitch_rotated_modes()
-            GM_pred  = self._calc_GM(u_y_R_pred, u_z_R_pred)
             GF_pred  = self._build_GF(simulation, u_y_R_pred, u_z_R_pred)
+            GM_pred  = self._calc_GM(u_y_R_pred, u_z_R_pred)
             M_pred   = self._build_M(GM_pred, u_y_R_pred, u_z_R_pred)
             K_pred   = self._build_K(GM_pred)
 
+            # Calculate the residual for the predicted state
             r     = GF_pred - M_pred @ GX_ddot_pred - C @ GX_dot_pred - K_pred @ GX_pred
             r_max = max(abs(r))
 
@@ -1032,6 +1026,11 @@ class FlexibleStructure11DOF(Structure):
 
             if iter_count > max_iter:
                 raise ValueError('Warning! Convergence was not reached in Newmark step.')
+            
+            # update step n+1 with the converged value
+            GX_new = GX_pred
+            GX_dot_new = GX_dot_pred
+            GX_ddot_new = GX_ddot_pred
 
         return GX_pred, GX_dot_pred, GX_ddot_pred
 

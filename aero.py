@@ -112,18 +112,10 @@ class Aero:
                     blade.vrel[0] = blade.v0[0]+ blade.w_qs_prev[0] - u5_blade[:, 1] # y 
                     blade.vrel[1] = blade.v0[1] + blade.w_qs_prev[1] - u5_blade[:, 2] #z
                 
-                # if self.use_structural_dynamics:
-                #     # compute blade vibrations and add to relative velocity
-                #     u_blade, tower = simulation.structure.blade_vibration()
-                #     blade.vrel = blade.vrel - u_blade - tower
-                #     #TODO implement vibrations in velocity triangle
-
 
                 # calculate norm of relative velocity
                 norm_vrel = np.linalg.norm(blade.vrel, axis=0)
                 norm_vrel = np.maximum(norm_vrel, 1e-6)  # Prevent zero velocity
-                
-
                 
                 # calculate flow angle
                 phi = arctan2(blade.vrel[1], -blade.vrel[0]) # in radians

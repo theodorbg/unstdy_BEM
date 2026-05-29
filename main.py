@@ -58,8 +58,8 @@ plt.rcParams.update({
 })
 
 do = {
-    "rigid_structure": False,
-    "5_dof": False,
+    "rigid_structure": True,
+    "5_dof": True,
     "11_dof": True,
     "compare_structures": True,
 }
@@ -70,13 +70,14 @@ omega_init_RPM = 5.0
 omega_init     = omega_init_RPM * 2 * np.pi / 60
 print(f"Initial rotational speed: {omega_init:.2f} rad/s ({omega_init_RPM} RPM)")
 
-v_hub = [7, 18]
-turb_intensity = [0, 0.1]
+v_hub = [8, 18]
+turb_intensity = [0.1]
+T = 60.0
 
 BLADE_POSITION = 88 #M
 
 def test_structure(structure,
-                   V_hub,
+                   v_hub,
                    TI,
                    T=400.0,
                    additional_recorders=False
@@ -84,13 +85,13 @@ def test_structure(structure,
     structure = structure
     wind_profile = ConfiguredWind(
         hub_height=structure.hub_height,
-        v_hub=V_hub,
+        v_hub=v_hub,
         shear_exp=0.2,
         TI=TI,
         tower_radius=None # because no tower effects
     )
     aero = Aero(
-        V_hub=V_hub,
+        V_hub=v_hub,
         use_dyn_wake=True,
         use_dyn_stall=True,
         use_wake_effects="empirical",
@@ -116,8 +117,8 @@ def test_structure(structure,
         recorders=recorders
     )
     
-    simulation.run(dt=0.01, T=T)
-    simulation.save_recorders(f"sim_data/{structure.__class__.__name__}_V_hub_{V_hub}_TI_{TI}", overwrite=True)
+    simulation.run(dt=0.05, T=T)
+    simulation.save_recorders(f"sim_data/{structure.__class__.__name__}_v_hub_{v_hub}_TI_{TI}", overwrite=True)
     return simulation.get_recorders()
     
 def load_recorders(folder: str) -> dict:
@@ -132,17 +133,23 @@ def load_recorders(folder: str) -> dict:
 if do["rigid_structure"]:
     section_divider("INITIALIZING RIGID STRUCTURE SCRIPT")
     structure_rigid = RigidStructure(omega_init=omega_init)
-    recorders_rigid = {}
-    for v in v_hub:
-        for ti in turb_intensity:
-            print(f"Running rigid structure case with V_hub={v} m/s and TI={ti}")
-            recorders = test_structure(
-                structure=structure_rigid,
-                V_hub=v,
-                TI=ti,
-                T=400.0
-            )
-            recorders_rigid[(v, ti)] = recorders
+    recorder_rigid = test_structure(
+        structure=structure_rigid,
+        v_hub=v_hub[0],
+        TI=turb_intensity[0],
+        T=T
+    )
+    # recorders_rigid = {}
+    # for v in v_hub:
+    #     for ti in turb_intensity:
+    #         print(f"Running rigid structure case with v_hub={v} m/s and TI={ti}")
+    #         recorders = test_structure(
+    #             structure=structure_rigid,
+    #             v_hub=v,
+    #             TI=ti,
+    #             T=400.0
+    #         )
+    #         recorders_rigid[(v, ti)] = recorders
     section_divider("FINISHED RIGID STRUCTURE SCRIPT")
 
 if do["5_dof"]:
@@ -157,9 +164,9 @@ if do["5_dof"]:
     structure_5dof = FlexibleStructure5DOF(omega_init=omega_init, use_gravity=True)
     recorders_5dof = test_structure(
         structure=structure_5dof,
-        V_hub=18.0,
+        v_hub=v_hub[0],
         TI=turb_intensity[0],
-        T=60.0,
+        T=T,
         additional_recorders=recorders_5dof
     )
     section_divider("FINISHED 5-DOF STRUCTURE SCRIPT")
@@ -175,9 +182,9 @@ if do["11_dof"]:
     structure_11dof = FlexibleStructure11DOF(omega_init=omega_init, use_gravity=True)
     recorders_11dof = test_structure(
         structure=structure_11dof,
-        V_hub=25.0,
+        v_hub=v_hub[0],
         TI=turb_intensity[0],
-        T=60.0,
+        T=T,
         additional_recorders=recorders_11dof
     )
     section_divider("FINISHED 11-DOF STRUCTURE SCRIPT")
@@ -185,9 +192,9 @@ if do["11_dof"]:
 if do["compare_structures"]:
     section_divider("COMPARING STRUCTURES")
 
-    recorders_rigid = load_recorders("sim_data/RigidStructure_V_hub_7_TI_0")
-    recorders_5dof  = load_recorders("sim_data/FlexibleStructure5DOF_V_hub_7_TI_0")
-    recorders_11dof = load_recorders("sim_data/FlexibleStructure11DOF_V_hub_7_TI_0")
+    recorders_rigid = load_recorders("sim_data/RigidStructure_v_hub_7_TI_0")
+    recorders_5dof  = load_recorders("sim_data/FlexibleStructure5DOF_v_hub_7_TI_0")
+    recorders_11dof = load_recorders("sim_data/FlexibleStructure11DOF_v_hub_7_TI_0")
 
     t_r  = recorders_rigid["mech_rotor_recorder"]["time"]
     t_5  = recorders_5dof["mech_rotor_recorder"]["time"]
@@ -199,7 +206,7 @@ if do["compare_structures"]:
 
     # ── Figure 1: Power / Omega / Pitch ──────────────────────────────
     fig1, axes1 = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
-    fig1.suptitle(f"Dynamics — $V_{{hub}}$ = {V_hub[0]} m/s, TI = {TI[0]}")
+    fig1.suptitle(f"Dynamics — $V_{{hub}}$ = {v_hub[0]} m/s, TI = {turb_intensity[0]}")
 
     ax = axes1[0]
     ax.plot(t_r,  recorders_rigid["mech_rotor_recorder"]["power"] / 1e6,        color=colors["rigid"],  label="Mechanical Rigid")
@@ -227,11 +234,11 @@ if do["compare_structures"]:
     ax.legend()
 
     fig1.tight_layout()
-    plt.savefig("compare_power_omega_pitch.png", dpi=150, bbox_inches="tight")
+    plt.savefig(f"plots/compare_power_omega_pitch_v_hub_{v_hub[0]}_TI_{turb_intensity[0]}.png", dpi=150, bbox_inches="tight")
 
     # ── Figure 2: Flapwise (left) / Edgewise (right) ─────────────────
     fig2, axes2 = plt.subplots(3, 2, figsize=(14, 10), sharex=True)
-    fig2.suptitle(f"Deflections & Loads — $V_{{hub}}$ = {V_hub[0]} m/s, TI = {TI[0]}")
+    fig2.suptitle(f"Deflections & Loads — $V_{{hub}}$ = {v_hub[0]} m/s, TI = {turb_intensity[0]}")
 
     # [0, left] Tip deflection — flapwise
     ax = axes2[0, 0]
@@ -277,7 +284,7 @@ if do["compare_structures"]:
     ax.legend()
 
     fig2.tight_layout()
-    plt.savefig("compare_deflections.png", dpi=150, bbox_inches="tight")
+    plt.savefig(f"plots/compare_deflections_v_hub_{v_hub[0]}_TI_{turb_intensity[0]}.png", dpi=150, bbox_inches="tight")
 
     plt.show()
     section_divider("FINISHED COMPARING STRUCTURES")
