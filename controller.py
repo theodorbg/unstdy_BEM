@@ -94,6 +94,8 @@ class Controller:
         
         # parameter for 2nd order filter
         self.pitch_prev = simulation.structure.pitch[0] # Assuming all blades have the same pitch angle, we can just take the pitch of the first blade.
+        
+        self.inertia_rotor = simulation.structure.inertia_rotor
 
 
     
@@ -138,7 +140,7 @@ class Controller:
             omega0**2 * dt**2 * pitch_sp
             + (2- omega0**2 * dt**2) * pitch_current
             + (zeta * omega0 * dt - 1) * self.pitch_prev 
-        ) / (1 + zeta * omega0 * dt)
+            ) / (1 + zeta * omega0 * dt)
         
         pitch_new = np.clip(pitch_new, pitch_min, pitch_max)
         

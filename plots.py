@@ -680,3 +680,10 @@ def plot_psd_flexible(
     if show_plot:
         plt.show()
     plt.close()
+    
+
+def section_divider(message: str):
+    print('#'*60)
+    print(message)
+    print('#'*60)
+

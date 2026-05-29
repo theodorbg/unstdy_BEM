@@ -202,20 +202,126 @@ def cp_rotor_recorder(name: str):
         return cp
     return Recorder(cp_rotor, name, "cp_rotor")
 
-def flap1_recorder(name: str):
-    def get_flap1(simulation):
-        flap1 = simulation.structure.q1[0] * simulation.structure.u1_flap[:, -1]
-        return np.asarray([flap1[0], flap1[1]], dtype=float)
-    return Recorder(get_flap1, name, ("y", "z"))
-        
-def edge1_recorder(name: str):
-    def get_edge1(simulation):
-        edge1 = simulation.structure.q2[0] * simulation.structure.u1_edge[:, -1]
-        return np.asarray([edge1[0], edge1[1]], dtype=float)
-    return Recorder(get_edge1, name, ("y", "z"))
 
-def flap2_recorder(name: str):
-    def get_flap2(simulation):
-        flap2 = simulation.structure.q3[0] * simulation.structure.u2_flap[:, -1]
-        return np.asarray([flap2[0], flap2[1]], dtype=float)
-    return Recorder(get_flap2, name, ("y", "z"))
+def tip_deflection_recorder_5DOF(name: str):
+    """ 
+    Tip deflection recorder for both edgewise (y) 
+    and flapwise (z) directions — blade 0 only (5DOF)
+    
+    """
+    def rec(simulation):
+        # check if structurre has deflection_y and deflection_z attributes
+        if hasattr(simulation.structure, "deflection_y") and hasattr(simulation.structure, "deflection_z"):
+            tip_edge = simulation.structure.deflection_y[-1]
+            tip_flap = simulation.structure.deflection_z[-1]
+            
+            return (tip_edge, tip_flap)
+        else:
+            print("The structure does not have deflection_y and deflection_z attributes.")
+            return (0.0, 0.0) # return zeros if the attributes are not present
+        
+    return Recorder(rec, name, ("tip_edge", "tip_flap"))
+
+
+
+def deflection_recorder_5DOF(name: str, element_idx: int):
+    """ 
+    Deflection recorder at a chosen radial station index — 
+    blade 0 only (5DOF) 
+    
+    """
+    def rec(simulation):
+        # check if structure has deflection_y and deflection_z attributes
+        if hasattr(simulation.structure, "deflection_y") and hasattr(simulation.structure, "deflection_z"):
+            return (simulation.structure.deflection_y[element_idx],
+                    simulation.structure.deflection_z[element_idx])
+        else:
+            print("The structure does not have deflection_y and deflection_z attributes.")
+            return (0.0, 0.0) # return zeros if the attributes are not present
+
+    return Recorder(rec, name, ("edge", "flap"))
+
+def root_bending_moment_recorder_5DOF(name: str):
+    """ 
+    Root bending moment recorder for both flapwise (y) 
+    and edgewise (z) directions — blade 0 only (5DOF)
+    
+    """
+    
+    def rec(simulation):
+        # check if structure has M_bend_y and M_bend_z attributes
+        if hasattr(simulation.structure, "M_bend_y") and hasattr(simulation.structure, "M_bend_z"):
+            return (simulation.structure.M_bend_y,
+                    simulation.structure.M_bend_z)
+        else:
+            print("The structure does not have M_bend_y and M_bend_z attributes.")
+            return (0.0, 0.0) # return zeros if the attributes are not present
+    return Recorder(rec, name, ("M_flap", "M_edge"))
+
+
+
+def modal_amplitudes_recorder_5DOF(name: str):
+    """
+    Modal amplitude recorder for 5DOF — records q1, q2, q3 for full spanwise deflection reconstruction
+    """
+    def rec(simulation):
+        return (simulation.structure.GX[2],
+                simulation.structure.GX[3],
+                simulation.structure.GX[4])
+    return Recorder(rec, name, ("q1", "q2", "q3"))
+
+
+
+
+def tip_deflection_recorder_11DOF(name: str, blade_idx: int = 0):
+    """
+    11DOF recorders for tip deflection, deflection at a chosen radial station, and root bending moment
+    """
+    def rec(simulation):
+        # check if structure has M_bend_y and M_bend_z attributes
+        if hasattr(simulation.structure, "deflection_y") and hasattr(simulation.structure, "deflection_z"):
+            return (simulation.structure.deflection_y[blade_idx, -1],
+                    simulation.structure.deflection_z[blade_idx, -1])
+        else:
+            print("The structure does not have deflection_y and deflection_z attributes.")
+            return (0.0, 0.0) # return zeros if the attributes are not present
+    return Recorder(rec, name, ("tip_edge", "tip_flap"))
+
+def deflection_recorder_11DOF(name: str, element_idx: int, blade_idx: int = 0):
+    """
+    11DOF recorders for blade deflection, deflection at a chosen radial station
+    """
+    def rec(simulation):
+        if hasattr(simulation.structure, "deflection_y") and hasattr(simulation.structure, "deflection_z"):
+            return (simulation.structure.deflection_y[blade_idx, element_idx],
+                    simulation.structure.deflection_z[blade_idx, element_idx])
+        else:
+            print("The structure does not have deflection_y and deflection_z attributes.")
+            return (0.0, 0.0) # return zeros if the attributes are not present
+    return Recorder(rec, name, ("edge", "flap"))
+
+def modal_amplitudes_recorder_11DOF(name: str, blade_idx: int = 0):
+    def rec(simulation):
+        return (simulation.structure.GX[2 + 3*blade_idx],
+                simulation.structure.GX[3 + 3*blade_idx],
+                simulation.structure.GX[4 + 3*blade_idx])
+    return Recorder(rec, name, ("q1", "q2", "q3"))
+
+def root_bending_moment_recorder_11DOF(name: str, blade_idx: int = 0):
+    def rec(simulation):
+        # check if structure has M_bend_y and M_bend_z attributes
+        if hasattr(simulation.structure, "M_bend_y") and hasattr(simulation.structure, "M_bend_z"):
+            return (simulation.structure.M_bend_y[blade_idx],
+                    simulation.structure.M_bend_z[blade_idx])
+        else:
+            print("The structure does not have M_bend_y and M_bend_z attributes.")
+            return (0.0, 0.0) # return zeros if the attributes are not present
+    return Recorder(rec, name, ("M_flap", "M_edge"))
+
+def tower_displacement_recorder(name: str):
+    def rec(simulation):
+        return simulation.structure.tower_displacement
+    return Recorder(rec, name, "tower_disp")
+
+
+

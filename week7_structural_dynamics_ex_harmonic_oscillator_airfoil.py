@@ -8,6 +8,7 @@ import numpy as np
 from numpy import arctan, sqrt
 import pandas as pd
 from scipy.integrate import solve_ivp
+import matplotlib.pyplot as plt
 
 class Airfoil:
     def __init__(self, 
@@ -48,6 +49,7 @@ class Airfoil:
         z2 = x_dot # velocity
 
         flow_angle_rad = arctan(z2 / self.v0) # radians (flow angle)
+        # flow_angle_rad = np.deg2rad(90) # test stability at 90° flow angle (stall)
 
         self.aoa_rad = self.aoa_geo_rad + flow_angle_rad # radians (angle of attack)
 
@@ -114,13 +116,15 @@ class Airfoil:
 
 
         
+airfoil_dict = {}
+aoa_values = [0, 20]
+use_dyn_stall_values = [True, False]
+for aoa in aoa_values:
+    for use_dyn_stall in use_dyn_stall_values:
+        key = f"aoa_{aoa}_{'stall' if use_dyn_stall else 'no_stall'}"
+        airfoil_dict[key] = Airfoil(aoa_geo_deg=aoa, use_dyn_stall=use_dyn_stall)
 
-airfoil_0_stall = Airfoil(aoa_geo_deg=0, use_dyn_stall=True)
-airfoil_20_stall = Airfoil(aoa_geo_deg=20, use_dyn_stall=True)
-airfoil_0_no_stall = Airfoil(aoa_geo_deg=0, use_dyn_stall=False)
-airfoil_20_no_stall = Airfoil(aoa_geo_deg=20, use_dyn_stall=False)
-
-airfoils = [airfoil_0_stall, airfoil_20_stall, airfoil_0_no_stall, airfoil_20_no_stall]
+airfoils_list = list(airfoil_dict.values())
 
 
 # --- INITIAL CONDITIONS --- #
@@ -133,9 +137,9 @@ y0 = [x0, x_dot0, f0]
 t_span = (0, 10)
 t_eval = np.linspace(t_span[0], t_span[1], 1000)
 
-# --- SOLVE ODE'S --- #
-for airfoil in airfoils:
-    airfoil.sol = airfoil.solve_soe(
+# --- Solve ---
+for airfoil in airfoil_dict.values():
+    airfoil.solve_soe(
         eom=airfoil.eom,
         t_span=t_span,
         y0=y0,
@@ -144,47 +148,43 @@ for airfoil in airfoils:
         rtol=1e-6,
         atol=1e-9
     )
-    
-# Create 2 subplots in 1 figure
-# subplot 1: displacement
-# subplot 2: velocity
-# show only one legend, indicating stall or not, and angle of attack  (aoa). Displacement vs velocity can be in the y axis, and time in the x axis.
-import matplotlib.pyplot as plt
+
+# --- Plot 1: all cases, displacement + velocity ---
 fig, axs = plt.subplots(2, 1, figsize=(10, 8))
-for airfoil in airfoils:
+for key, airfoil in airfoil_dict.items():
     label = f"AOA={airfoil.aoa_geo_deg}°, {'Stall' if airfoil.use_dyn_stall else 'No Stall'}"
     axs[0].plot(airfoil.t, airfoil.x, label=label)
     axs[1].plot(airfoil.t, airfoil.x_dot, label=label)
-    
-# Show only one legend for both subplots
+
 handles, labels = axs[0].get_legend_handles_labels()
-axs[0].legend(handles, labels, loc='upper right')
-axs[1].legend(handles, labels, loc='upper right')
-axs[0].set_title('Displacement vs Time')
-axs[0].set_xlabel('Time [s]')
-axs[1].set_title('Velocity vs Time')
-axs[1].set_xlabel('Time [s]')
+for ax, ylabel, title in zip(axs,
+                              ['Displacement [m]', 'Velocity [m/s]'],
+                              ['Displacement vs Time', 'Velocity vs Time']):
+    ax.legend(handles, labels, loc='upper right')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
 plt.tight_layout()
 plt.show()
 
-# Create 4 subplots in 1 figure, showing the 4 cases separately,
-# plot1: alpha=0, no stall and stall, position
-# plot2: alpha=20, no stall and stall, position
-# plot3: alpha=0, no stall and stall, velocity
-# plot4: alpha=20, no stall and stall, velocity
-fig, axs = plt.subplots(2, 2, figsize=(12, 10))
-for airfoil in airfoils:
-    label = f"{'Stall' if airfoil.use_dyn_stall else 'No Stall'}"
-    if airfoil.aoa_geo_deg == 0:
-        axs[0, 0].plot(airfoil.t, airfoil.x, label=label)
-        axs[1, 0].plot(airfoil.t, airfoil.x_dot, label=label)
-    else:
-        axs[0, 1].plot(airfoil.t, airfoil.x, label=label)
-        axs[1, 1].plot(airfoil.t, airfoil.x_dot, label=label)
-# Show legends for each subplot
-axs[0, 0].legend(loc='upper right')
-axs[1, 0].legend(loc='upper right')
-axs[0, 1].legend(loc='upper right')
-axs[1, 1].legend(loc='upper right')
+# --- Plot 2: one column per AOA, rows = displacement / velocity ---
+aoa_col_map = {aoa: i for i, aoa in enumerate(aoa_values)}  # {0:0, 20:1, 90:2}
+
+fig, axs = plt.subplots(2, len(aoa_values), figsize=(6 * len(aoa_values), 10))
+
+for key, airfoil in airfoil_dict.items():
+    col = aoa_col_map[airfoil.aoa_geo_deg]
+    label = 'Stall' if airfoil.use_dyn_stall else 'No Stall'
+    axs[0, col].plot(airfoil.t, airfoil.x, label=label)
+    axs[1, col].plot(airfoil.t, airfoil.x_dot, label=label)
+
+for aoa, col in aoa_col_map.items():
+    axs[0, col].set_title(f'AOA={aoa}°: Displacement vs Time')
+    axs[1, col].set_title(f'AOA={aoa}°: Velocity vs Time')
+    for row, ylabel in enumerate(['Displacement [m]', 'Velocity [m/s]']):
+        axs[row, col].set_xlabel('Time [s]')
+        axs[row, col].set_ylabel(ylabel)
+        axs[row, col].legend(loc='upper right')
+
 plt.tight_layout()
 plt.show()

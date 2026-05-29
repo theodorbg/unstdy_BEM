@@ -101,20 +101,22 @@ class Aero:
                 omega = simulation.structure.omega_shaft
                 cone = simulation.structure.cone
                 x = blade.r
+                
+                u5_blade = simulation.structure.blade_u5(blade.blade_idx)
 
                 # calculate relative velocity components with previous induced velocities
                 if self.use_dyn_wake:
-                    blade.vrel[0] = blade.v0[0]+ blade.w[0] - omega*x*cos(cone) # y 
-                    blade.vrel[1] = blade.v0[1] + blade.w[1] #z
+                    blade.vrel[0] = blade.v0[0]+ blade.w[0] - u5_blade[:, 1] # y 
+                    blade.vrel[1] = blade.v0[1] + blade.w[1] - u5_blade[:, 2] #z
                 else:
-                    blade.vrel[0] = blade.v0[0]+ blade.w_qs_prev[0] - omega*x*cos(cone) # y 
-                    blade.vrel[1] = blade.v0[1] + blade.w_qs_prev[1] #z
+                    blade.vrel[0] = blade.v0[0]+ blade.w_qs_prev[0] - u5_blade[:, 1] # y 
+                    blade.vrel[1] = blade.v0[1] + blade.w_qs_prev[1] - u5_blade[:, 2] #z
                 
-                if self.use_structural_dynamics:
-                    # compute blade vibrations and add to relative velocity
-                    u_blade, tower = simulation.structure.blade_vibration()
-                    blade.vrel = blade.vrel - u_blade - tower
-                    #TODO implement vibrations in velocity triangle
+                # if self.use_structural_dynamics:
+                #     # compute blade vibrations and add to relative velocity
+                #     u_blade, tower = simulation.structure.blade_vibration()
+                #     blade.vrel = blade.vrel - u_blade - tower
+                #     #TODO implement vibrations in velocity triangle
 
 
                 # calculate norm of relative velocity
@@ -179,6 +181,8 @@ class Aero:
                 blade.w_qs[0] = (-B*lift*sin(phi)) / denominator
                 blade.w_qs[1] = (-B*lift*cos(phi)) / denominator
 
+                
+                #TODO: update sec. yaw to mean over blade sections instead of 0.7R
                 if self.use_wake_effects and simulation.structure.yaw != 0:
                     blade_azi = simulation.structure.blade_azimuth(blade.blade_idx)
                     d_azi = blade_azi - simulation.structure.max_downstream_azi
@@ -215,9 +219,10 @@ class Aero:
                                                         self.V_hub, 
                                                         r)
 
+                r_eff = blade.r * cos(cone) # effective radius 
                 # compute thrust
-                blade._thrust = np.trapezoid(blade.p[1], blade.r)
-                blade._torque = np.trapezoid(blade.p[0]*blade.r, blade.r)
+                blade._thrust = np.trapezoid(blade.p[1], r_eff)
+                blade._torque = np.trapezoid(blade.p[0]*r_eff, r_eff)
                 blade._power = blade._torque * omega
 
             # sum thrust, torque and power over blades
@@ -329,7 +334,8 @@ class Aero:
         cl_inv = airfoils.cl_inv_interp((aoa, blade.tc))
         cl_fs = airfoils.cl_fs_interp((aoa, blade.tc))
         fs_stat = airfoils.f_stat_interp((aoa, blade.tc))
-        tau = 4*blade.chord/vrel 
+        A = 4.0 # Typical empirical constant for dynamic stall model
+        tau = A*blade.chord/vrel 
         blade.fs = fs_stat + (blade.fs-fs_stat)*np.exp(-simulation.dt/tau)
         cl = blade.fs*cl_inv + (1-blade.fs)*cl_fs
         return cl, blade.fs

@@ -1,0 +1,22 @@
+EMIL
+    def __init__(self, DynamicWake: bool = True, DynamicStall: bool = True, 
+    
+    "
+    SecondaryYawEffect: bool = True,
+     yaw_method: str = "empirical") 
+     "
+     
+    -> None:
+
+
+THEO
+    def __init__(self,
+                 V_hub,
+                 glauert = False,
+                 use_dyn_wake = False,
+                 use_dyn_stall = False,
+
+                 "
+                 use_wake_effects: bool | str = True,
+                 use_structural_dynamics: bool | str = False) -> None:
+                 "
